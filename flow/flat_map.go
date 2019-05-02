@@ -30,7 +30,7 @@ func NewFlatMap(f FlatMapFunc, parallelism uint) *FlatMap {
 }
 
 func (fm *FlatMap) Via(flow streams.Flow) streams.Flow {
-	fm.doStream(flow)
+	go fm.doStream(flow)
 	return flow
 }
 

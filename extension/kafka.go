@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
@@ -15,9 +16,61 @@ import (
 //supports rebalance handling for given group.id
 //auto.commit is enabled by default
 type KafkaSource struct {
+	consumer   *kafka.Consumer
+	topics     []string
+	in         chan interface{}
+	once       sync.Once
+	commitFlow *CommitOffset
+}
+
+func (ks *KafkaSource) Commit() *CommitOffset {
+	ks.once.Do(func() {
+		ks.commitFlow = NewCommitOffset(ks.consumer)
+	})
+	return ks.commitFlow
+}
+
+//Kafka manual offsets commit flow
+type CommitOffset struct {
 	consumer *kafka.Consumer
-	topics   []string
 	in       chan interface{}
+}
+
+func NewCommitOffset(consumer *kafka.Consumer) *CommitOffset {
+	return &CommitOffset{
+		consumer,
+		make(chan interface{}),
+	}
+}
+
+func (co *CommitOffset) Via(flow streams.Flow) streams.Flow {
+	go co.loop(flow)
+	return flow
+}
+
+func (co *CommitOffset) To(sink streams.Sink) {
+	co.loop(sink)
+}
+
+func (co *CommitOffset) loop(inlet streams.Inlet) {
+	for ev := range co.Out() {
+		switch e := ev.(type) {
+		case *kafka.Message:
+			co.consumer.CommitMessage(e)
+			inlet.In() <- e
+		default:
+			panic("CommitOffset invalid msg type")
+		}
+	}
+	close(inlet.In())
+}
+
+func (co *CommitOffset) Out() <-chan interface{} {
+	return co.in
+}
+
+func (co *CommitOffset) In() chan<- interface{} {
+	return co.in
 }
 
 func NewKafkaSource(config *kafka.ConfigMap, topics ...string) *KafkaSource {
@@ -27,6 +80,8 @@ func NewKafkaSource(config *kafka.ConfigMap, topics ...string) *KafkaSource {
 		consumer,
 		topics,
 		make(chan interface{}),
+		sync.Once{},
+		nil,
 	}
 	go source.init()
 	return source

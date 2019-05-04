@@ -30,7 +30,7 @@ func NewMap(f MapFunc, parallelism uint) *Map {
 }
 
 func (m *Map) Via(flow streams.Flow) streams.Flow {
-	m.doStream(flow)
+	go m.doStream(flow)
 	return flow
 }
 

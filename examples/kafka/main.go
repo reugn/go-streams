@@ -5,6 +5,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	ext "github.com/reugn/go-streams/extension"
@@ -14,22 +15,33 @@ import (
 func main() {
 	host := "127.0.0.1:9092"
 	config := kafka.ConfigMap{
-		"bootstrap.servers": host,
-		"group.id":          "myGroup",
-		"auto.offset.reset": "earliest",
+		"bootstrap.servers":  host,
+		"group.id":           "myGroup",
+		"enable.auto.commit": false,
+		"auto.offset.reset":  "earliest",
 	}
 
 	source := ext.NewKafkaSource(&config, "test")
-	flow := flow.NewMap(toUpper, 1)
+	flow1 := flow.NewMap(toUpper, 1)
+	flow2 := flow.NewMap(appendAsterix, 1)
 	sink := ext.NewKafkaSink(&config, "test2")
+	throttler := flow.NewThrottler(1, time.Second*3, 5, flow.Discard)
+	//manual offset commit flow
+	commit := source.Commit()
 
-	source.Via(flow).To(sink)
+	source.Via(flow1).Via(commit).Via(throttler).Via(flow2).To(sink)
 	wait()
 }
 
 var toUpper = func(in interface{}) interface{} {
 	msg := in.(*kafka.Message)
 	msg.Value = []byte(strings.ToUpper(string(msg.Value)))
+	return msg
+}
+
+var appendAsterix = func(in interface{}) interface{} {
+	msg := in.(*kafka.Message)
+	msg.Value = []byte(string(msg.Value) + "*")
 	return msg
 }
 

@@ -17,6 +17,7 @@ Flow capabilities (flow package):
 * Split
 * FanOut
 * Merge
+* Throttler
 
 Supported Sources and Sinks (ext package):
 * Go channels

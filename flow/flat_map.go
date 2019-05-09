@@ -53,7 +53,9 @@ func (fm *FlatMap) doStream(inlet streams.Inlet) {
 		go func(e interface{}) {
 			defer func() { <-sem }()
 			trans := fm.FlatMapF(e)
-			inlet.In() <- trans
+			for _, item := range trans {
+				inlet.In() <- item
+			}
 		}(elem)
 	}
 	for i := 0; i < int(fm.parallelism); i++ {

@@ -18,6 +18,8 @@ Flow capabilities (flow package):
 * FanOut
 * Merge
 * Throttler
+* SlidingWindow
+* TumblingWindow
 
 Supported Sources and Sinks (ext package):
 * Go channels

@@ -23,13 +23,15 @@ func main() {
 
 	source := ext.NewKafkaSource(&config, "test")
 	flow1 := flow.NewMap(toUpper, 1)
-	flow2 := flow.NewMap(appendAsterix, 1)
+	flow2 := flow.NewFlatMap(appendAsterix, 1)
 	sink := ext.NewKafkaSink(&config, "test2")
-	throttler := flow.NewThrottler(1, time.Second*3, 5, flow.Discard)
+	throttler := flow.NewThrottler(1, time.Second*1, 50, flow.Discard)
+	// slidingWindow := flow.NewSlidingWindow(time.Second*30, time.Second*5)
+	tumblingWindow := flow.NewTumblingWindow(time.Second * 5)
 	//manual offset commit flow
 	commit := source.Commit()
 
-	source.Via(flow1).Via(commit).Via(throttler).Via(flow2).To(sink)
+	source.Via(flow1).Via(commit).Via(throttler).Via(tumblingWindow).Via(flow2).To(sink)
 	wait()
 }
 
@@ -39,10 +41,15 @@ var toUpper = func(in interface{}) interface{} {
 	return msg
 }
 
-var appendAsterix = func(in interface{}) interface{} {
-	msg := in.(*kafka.Message)
-	msg.Value = []byte(string(msg.Value) + "*")
-	return msg
+var appendAsterix = func(in interface{}) []interface{} {
+	arr := in.([]interface{})
+	rt := make([]interface{}, len(arr))
+	for i, item := range arr {
+		msg := item.(*kafka.Message)
+		msg.Value = []byte(string(msg.Value) + "*")
+		rt[i] = msg
+	}
+	return rt
 }
 
 func wait() {

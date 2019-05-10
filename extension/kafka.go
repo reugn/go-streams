@@ -171,7 +171,7 @@ func contains(s []kafka.TopicPartition, p kafka.TopicPartition) bool {
 }
 
 //Kafka Sink implementation
-//Produces messages using Round Robin partitioning strategy
+//Produces messages using Round Robin partitioning strategy on empty key
 type KafkaSink struct {
 	producer        *kafka.Producer
 	topic           string
@@ -199,9 +199,9 @@ func (ks *KafkaSink) init() {
 	for msg := range ks.in {
 		switch m := msg.(type) {
 		case *kafka.Message:
-			ks.produce(m.Value, m.Headers)
+			ks.produce(m.Key, m.Value, m.Headers)
 		case string:
-			ks.produce([]byte(m), []kafka.Header{})
+			ks.produce(nil, []byte(m), []kafka.Header{})
 		}
 	}
 	fmt.Printf("Closing producer\n")
@@ -209,10 +209,17 @@ func (ks *KafkaSink) init() {
 }
 
 //produce message
-func (ks *KafkaSink) produce(value []byte, headers []kafka.Header) error {
+func (ks *KafkaSink) produce(key []byte, value []byte, headers []kafka.Header) error {
+	var partition int32
+	if key == nil {
+		partition = ks.nextPartition()
+	} else {
+		partition = ks.keyPartition(key)
+	}
 	msg := kafka.Message{
-		TopicPartition: kafka.TopicPartition{Topic: &ks.topic, Partition: ks.nextPartition()},
+		TopicPartition: kafka.TopicPartition{Topic: &ks.topic, Partition: partition},
 		Value:          value,
+		Key:            key,
 		Headers:        headers,
 	}
 	fmt.Printf("Producing message: %s, to topic: %s\n", msg.Value, msg.TopicPartition.String())
@@ -233,6 +240,12 @@ func (ks *KafkaSink) nextPartition() int32 {
 	partition := (ks.partition & 0x7fffffff) % ks.topicPartitions
 	fmt.Printf("Partition: %d from %d\n", partition, ks.topicPartitions)
 	return partition
+}
+
+//Calculate message partition by key
+func (ks *KafkaSink) keyPartition(key []byte) int32 {
+	hashCode := streams.HashCode(key)
+	return (int32(hashCode) & 0x7fffffff) % ks.topicPartitions
 }
 
 func (ks *KafkaSink) In() chan<- interface{} {

@@ -1,6 +1,9 @@
 package streams
 
-import "time"
+import (
+	"hash/fnv"
+	"time"
+)
 
 func Check(e error) {
 	if e != nil {
@@ -10,4 +13,10 @@ func Check(e error) {
 
 func NowNano() int64 {
 	return time.Now().UTC().UnixNano()
+}
+
+func HashCode(b []byte) uint32 {
+	h := fnv.New32a()
+	h.Write(b)
+	return h.Sum32()
 }

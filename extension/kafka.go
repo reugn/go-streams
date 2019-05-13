@@ -2,6 +2,7 @@ package ext
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"sync"
@@ -96,7 +97,7 @@ func (ks *KafkaSource) init() {
 	for run == true {
 		select {
 		case sig := <-sigchan:
-			fmt.Printf("Caught signal %v: terminating\n", sig)
+			log.Printf("Caught signal %v: terminating\n", sig)
 			run = false
 		default:
 			ev := ks.consumer.Poll(100)
@@ -105,9 +106,9 @@ func (ks *KafkaSource) init() {
 			}
 			switch e := ev.(type) {
 			case *kafka.Message:
-				fmt.Printf("%% Message on %s:\n%s\n", e.TopicPartition, string(e.Value))
+				log.Printf("%% Message on %s:\n%s\n", e.TopicPartition, string(e.Value))
 				if e.Headers != nil {
-					fmt.Printf("%% Headers: %v\n", e.Headers)
+					log.Printf("%% Headers: %v\n", e.Headers)
 				}
 				ks.in <- e
 			case kafka.Error:
@@ -116,11 +117,11 @@ func (ks *KafkaSource) init() {
 					run = false
 				}
 			default:
-				fmt.Printf("Ignored %v\n", e)
+				log.Printf("Ignored %v\n", e)
 			}
 		}
 	}
-	fmt.Printf("Closing consumer\n")
+	log.Printf("Closing consumer\n")
 	close(ks.in)
 	ks.consumer.Close()
 }
@@ -204,7 +205,7 @@ func (ks *KafkaSink) init() {
 			ks.produce(nil, []byte(m), []kafka.Header{})
 		}
 	}
-	fmt.Printf("Closing producer\n")
+	log.Printf("Closing producer\n")
 	ks.producer.Close()
 }
 
@@ -222,7 +223,7 @@ func (ks *KafkaSink) produce(key []byte, value []byte, headers []kafka.Header) e
 		Key:            key,
 		Headers:        headers,
 	}
-	fmt.Printf("Producing message: %s, to topic: %s\n", msg.Value, msg.TopicPartition.String())
+	log.Printf("Producing message: %s, to topic: %s\n", msg.Value, msg.TopicPartition.String())
 	return ks.producer.Produce(&msg, nil)
 }
 
@@ -238,7 +239,7 @@ func topicPartitionsNumber(producer *kafka.Producer, topic string) int32 {
 func (ks *KafkaSink) nextPartition() int32 {
 	ks.partition++
 	partition := (ks.partition & 0x7fffffff) % ks.topicPartitions
-	fmt.Printf("Partition: %d from %d\n", partition, ks.topicPartitions)
+	log.Printf("Partition: %d from %d\n", partition, ks.topicPartitions)
 	return partition
 }
 

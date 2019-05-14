@@ -1,6 +1,7 @@
 # go-streams
 Go stream processing library.  
 Provides simple and concise DSL to build data pipelines.
+![pipeline-architecture-example](./images/pipeline-architecture-example.png)
 > [Wiki](https://en.wikipedia.org/wiki/Pipeline_(computing))  
 > In computing, a pipeline, also known as a data pipeline,[1] is a set of data processing elements connected in series, where the output of one element is the input of the next one. The elements of a pipeline are often executed in parallel or in time-sliced fashion. Some amount of buffer storage is often inserted between elements.
 
@@ -24,7 +25,8 @@ Flow capabilities (flow package):
 Supported Sources and Sinks (ext package):
 * Go channels
 * File system
-* Kafka
+* [Kafka](https://kafka.apache.org/)
+* [Redis](https://redis.io/)
 
 ## Examples
 Could be found in the examples directory.

@@ -8,7 +8,8 @@ import (
 )
 
 // TumblingWindow flow
-// size - The size of the generated windows
+// Generates windows of a specified window size
+// Tumbling windows have a fixed size and do not overlap
 type TumblingWindow struct {
 	sync.Mutex
 	size   time.Duration
@@ -17,6 +18,8 @@ type TumblingWindow struct {
 	buffer []interface{}
 }
 
+// NewTumblingWindow
+// size - The size of the generated windows
 func NewTumblingWindow(size time.Duration) *TumblingWindow {
 	window := &TumblingWindow{
 		size: size,
@@ -62,6 +65,7 @@ func (tw *TumblingWindow) receive() {
 	close(tw.out)
 }
 
+// generate and emit window
 func (tw *TumblingWindow) emit() {
 	for {
 		select {

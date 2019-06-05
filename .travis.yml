@@ -21,7 +21,7 @@ before_install:
   - export DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/usr/local/lib
 
 script:
-  - go mod vendor && go test ./... -race -coverprofile=coverage.txt -covermode=atomic
+  - go mod vendor && go test ./... -coverprofile=coverage.txt -covermode=atomic
 
 after_success:
   - bash <(curl -s https://codecov.io/bash)

@@ -2,6 +2,7 @@
 [![Build Status](https://travis-ci.org/reugn/go-streams.svg?branch=master)](https://travis-ci.org/reugn/go-streams)
 [![GoDoc](https://godoc.org/github.com/reugn/go-streams?status.svg)](https://godoc.org/github.com/reugn/go-streams)
 [![Go Report Card](https://goreportcard.com/badge/github.com/reugn/go-streams)](https://goreportcard.com/report/github.com/reugn/go-streams)
+[![codecov](https://codecov.io/gh/reugn/go-streams/branch/master/graph/badge.svg)](https://codecov.io/gh/reugn/go-streams)
 
 Go stream processing library.  
 Provides simple and concise DSL to build data pipelines.

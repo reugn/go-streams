@@ -38,14 +38,14 @@ func Split(outlet streams.Outlet, cond func(interface{}) bool) [2]streams.Flow {
 
 //fans out the stream to magntude number of Flows
 func FanOut(outlet streams.Outlet, magnitude int) []streams.Flow {
-	out := make([]streams.Flow, magnitude)
+	var out []streams.Flow
 	for i := 0; i < magnitude; i++ {
 		out = append(out, NewPassThrough())
 	}
 	go func() {
 		for elem := range outlet.Out() {
-			for i := 0; i < magnitude; i++ {
-				out[i].In() <- elem
+			for _, socket := range out {
+				socket.In() <- elem
 			}
 		}
 		for i := 0; i < magnitude; i++ {
@@ -55,8 +55,8 @@ func FanOut(outlet streams.Outlet, magnitude int) []streams.Flow {
 	return out
 }
 
-//merges outlets to single Flow
-func Merge(outlets ...streams.Outlet) streams.Flow {
+//merges multiple flows
+func Merge(outlets ...streams.Flow) streams.Flow {
 	merged := NewPassThrough()
 	var wg sync.WaitGroup
 	wg.Add(len(outlets))

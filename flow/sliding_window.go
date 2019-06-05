@@ -19,6 +19,7 @@ type SlidingWindow struct {
 	in                 chan interface{}
 	out                chan interface{}
 	timestampExtractor func(interface{}) int64
+	closed             bool
 }
 
 // Processing time sliding window
@@ -89,6 +90,7 @@ func (sw *SlidingWindow) receive() {
 		heap.Push(sw.queue, item)
 		sw.Unlock()
 	}
+	sw.closed = true
 	close(sw.out)
 }
 
@@ -121,6 +123,9 @@ func (sw *SlidingWindow) emit() {
 				heap.Init(sw.queue)
 			}
 			sw.Unlock()
+			if sw.closed {
+				break
+			}
 			//send to out chan
 			if len(windowSlice) > 0 {
 				sw.out <- windowSlice

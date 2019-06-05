@@ -9,6 +9,11 @@ type Item struct {
 	index int   // maintained by the heap.Interface methods
 }
 
+// NewItem constructor
+func NewItem(msg interface{}, epoch int64, index int) *Item {
+	return &Item{msg, epoch, index}
+}
+
 // PriorityQueue implements heap.Interface
 type PriorityQueue []*Item
 

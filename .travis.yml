@@ -1,0 +1,25 @@
+language: go
+
+go:
+  - "1.12"
+
+os:
+  - linux
+
+env:
+  - GO111MODULE=on
+
+before_install:
+  - git clone https://github.com/edenhill/librdkafka
+  - cd librdkafka
+  - ./configure
+  - make
+  - sudo make install
+  - cd ..
+  - export PATH=$PATH:/usr/local/lib
+  - export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib
+  - export DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/usr/local/lib
+
+
+script:
+  - go mod vendor && go test ./...

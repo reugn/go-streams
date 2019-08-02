@@ -6,7 +6,7 @@ import (
 	"github.com/reugn/go-streams"
 )
 
-//stream from inlet to outlet
+//DoStream from inlet to outlet
 func DoStream(outlet streams.Outlet, inlet streams.Inlet) {
 	go func() {
 		for elem := range outlet.Out() {
@@ -16,7 +16,7 @@ func DoStream(outlet streams.Outlet, inlet streams.Inlet) {
 	}()
 }
 
-//splits stream to two flows
+//Split stream to two flows
 //first  - satisfies the condition
 //second - doesn't satisfy the condition
 func Split(outlet streams.Outlet, cond func(interface{}) bool) [2]streams.Flow {
@@ -36,7 +36,7 @@ func Split(outlet streams.Outlet, cond func(interface{}) bool) [2]streams.Flow {
 	return [...]streams.Flow{condTrue, condFalse}
 }
 
-//fans out the stream to magntude number of Flows
+//FanOut the stream to magntude number of Flows
 func FanOut(outlet streams.Outlet, magnitude int) []streams.Flow {
 	var out []streams.Flow
 	for i := 0; i < magnitude; i++ {
@@ -55,7 +55,7 @@ func FanOut(outlet streams.Outlet, magnitude int) []streams.Flow {
 	return out
 }
 
-//merges multiple flows
+//Merge multiple flows
 func Merge(outlets ...streams.Flow) streams.Flow {
 	merged := NewPassThrough()
 	var wg sync.WaitGroup

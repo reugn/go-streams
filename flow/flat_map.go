@@ -4,6 +4,7 @@ import (
 	"github.com/reugn/go-streams"
 )
 
+// FlatMapFunc transformer
 type FlatMapFunc func(interface{}) []interface{}
 
 // FlatMap function transformation flow
@@ -18,7 +19,7 @@ type FlatMap struct {
 	parallelism uint
 }
 
-// NewFlatMap
+// NewFlatMap returns new FlatMap instance
 // FlatMapFunc - transformation function
 // parallelism - parallelism factor, in case events order matters use parallelism = 1
 func NewFlatMap(f FlatMapFunc, parallelism uint) *FlatMap {
@@ -29,19 +30,23 @@ func NewFlatMap(f FlatMapFunc, parallelism uint) *FlatMap {
 	}
 }
 
+// Via streams data through given flow
 func (fm *FlatMap) Via(flow streams.Flow) streams.Flow {
 	go fm.doStream(flow)
 	return flow
 }
 
+// To streams data to given sink
 func (fm *FlatMap) To(sink streams.Sink) {
 	fm.doStream(sink)
 }
 
+// Out returns channel for sending data
 func (fm *FlatMap) Out() <-chan interface{} {
 	return fm.in
 }
 
+// In returns channel for receiving data
 func (fm *FlatMap) In() chan<- interface{} {
 	return fm.in
 }

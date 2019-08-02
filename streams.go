@@ -1,11 +1,11 @@
 package streams
 
-//In port interface
+//Inlet - In port interface
 type Inlet interface {
 	In() chan<- interface{}
 }
 
-//Out port interface
+//Outlet - Out port interface
 type Outlet interface {
 	Out() <-chan interface{}
 }
@@ -16,7 +16,7 @@ type Source interface {
 	Via(Flow) Flow
 }
 
-//Stream transformation interface
+//Flow - Stream transformation interface
 type Flow interface {
 	Inlet
 	Outlet

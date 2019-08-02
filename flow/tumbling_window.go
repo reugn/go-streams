@@ -18,7 +18,7 @@ type TumblingWindow struct {
 	buffer []interface{}
 }
 
-// NewTumblingWindow
+// NewTumblingWindow returns new TumblingWindow instance
 // size - The size of the generated windows
 func NewTumblingWindow(size time.Duration) *TumblingWindow {
 	window := &TumblingWindow{
@@ -31,19 +31,23 @@ func NewTumblingWindow(size time.Duration) *TumblingWindow {
 	return window
 }
 
+// Via streams data through given flow
 func (tw *TumblingWindow) Via(flow streams.Flow) streams.Flow {
 	go tw.transmit(flow)
 	return flow
 }
 
+// To streams data to given sink
 func (tw *TumblingWindow) To(sink streams.Sink) {
 	tw.transmit(sink)
 }
 
+// Out returns channel for sending data
 func (tw *TumblingWindow) Out() <-chan interface{} {
 	return tw.out
 }
 
+// In returns channel for receiving data
 func (tw *TumblingWindow) In() chan<- interface{} {
 	return tw.in
 }

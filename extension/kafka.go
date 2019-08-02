@@ -13,9 +13,9 @@ import (
 	"github.com/reugn/go-streams/flow"
 )
 
-//Kafka Source implementation
-//supports rebalance handling for given group.id
-//auto.commit is enabled by default
+// KafkaSource implementation
+// supports rebalance handling for given group.id
+// auto.commit is enabled by default
 type KafkaSource struct {
 	consumer   *kafka.Consumer
 	topics     []string
@@ -24,6 +24,7 @@ type KafkaSource struct {
 	commitFlow *CommitOffset
 }
 
+// Commit returns new commit Flow
 func (ks *KafkaSource) Commit() *CommitOffset {
 	ks.once.Do(func() {
 		ks.commitFlow = NewCommitOffset(ks.consumer)
@@ -31,12 +32,13 @@ func (ks *KafkaSource) Commit() *CommitOffset {
 	return ks.commitFlow
 }
 
-//Kafka manual offsets commit flow
+// CommitOffset is a Kafka manual offsets commit flow
 type CommitOffset struct {
 	consumer *kafka.Consumer
 	in       chan interface{}
 }
 
+// NewCommitOffset returns new CommitOffset instance
 func NewCommitOffset(consumer *kafka.Consumer) *CommitOffset {
 	return &CommitOffset{
 		consumer,
@@ -44,11 +46,13 @@ func NewCommitOffset(consumer *kafka.Consumer) *CommitOffset {
 	}
 }
 
+// Via streams data through given flow
 func (co *CommitOffset) Via(flow streams.Flow) streams.Flow {
 	go co.loop(flow)
 	return flow
 }
 
+// To streams data to given sink
 func (co *CommitOffset) To(sink streams.Sink) {
 	co.loop(sink)
 }
@@ -66,14 +70,17 @@ func (co *CommitOffset) loop(inlet streams.Inlet) {
 	close(inlet.In())
 }
 
+// Out returns channel for sending data
 func (co *CommitOffset) Out() <-chan interface{} {
 	return co.in
 }
 
+// In returns channel for receiving data
 func (co *CommitOffset) In() chan<- interface{} {
 	return co.in
 }
 
+// NewKafkaSource returns new KafkaSource instance
 func NewKafkaSource(config *kafka.ConfigMap, topics ...string) *KafkaSource {
 	consumer, err := kafka.NewConsumer(config)
 	streams.Check(err)
@@ -88,7 +95,7 @@ func NewKafkaSource(config *kafka.ConfigMap, topics ...string) *KafkaSource {
 	return source
 }
 
-//start main loop
+// start main loop
 func (ks *KafkaSource) init() {
 	ks.consumer.SubscribeTopics(ks.topics, rebalanceCallback)
 	sigchan := make(chan os.Signal, 1)
@@ -126,16 +133,18 @@ func (ks *KafkaSource) init() {
 	ks.consumer.Close()
 }
 
+// Via streams data through given flow
 func (ks *KafkaSource) Via(_flow streams.Flow) streams.Flow {
 	flow.DoStream(ks, _flow)
 	return _flow
 }
 
+// Out returns channel for sending data
 func (ks *KafkaSource) Out() <-chan interface{} {
 	return ks.in
 }
 
-//handle rebalance events
+// handle rebalance events
 var rebalanceCallback = func(c *kafka.Consumer, e kafka.Event) error {
 	switch evt := e.(type) {
 	case *kafka.AssignedPartitions:
@@ -151,7 +160,7 @@ var rebalanceCallback = func(c *kafka.Consumer, e kafka.Event) error {
 	return nil
 }
 
-//clear unassigned partitions from current assignment
+// clear unassigned partitions from current assignment
 func clearUnassigned(a []kafka.TopicPartition, u []kafka.TopicPartition) []kafka.TopicPartition {
 	var rt []kafka.TopicPartition
 	for _, p := range a {
@@ -171,8 +180,8 @@ func contains(s []kafka.TopicPartition, p kafka.TopicPartition) bool {
 	return false
 }
 
-//Kafka Sink implementation
-//Produces messages using Round Robin partitioning strategy on empty key
+// KafkaSink implementation
+// Produces messages using Round Robin partitioning strategy on empty key
 type KafkaSink struct {
 	producer        *kafka.Producer
 	topic           string
@@ -181,6 +190,7 @@ type KafkaSink struct {
 	topicPartitions int32
 }
 
+// NewKafkaSink returns new KafkaSink instance
 func NewKafkaSink(config *kafka.ConfigMap, topic string) *KafkaSink {
 	producer, err := kafka.NewProducer(config)
 	streams.Check(err)
@@ -195,7 +205,7 @@ func NewKafkaSink(config *kafka.ConfigMap, topic string) *KafkaSink {
 	return sink
 }
 
-//start main loop
+// start main loop
 func (ks *KafkaSink) init() {
 	for msg := range ks.in {
 		switch m := msg.(type) {
@@ -209,7 +219,7 @@ func (ks *KafkaSink) init() {
 	ks.producer.Close()
 }
 
-//produce message
+// produce message
 func (ks *KafkaSink) produce(key []byte, value []byte, headers []kafka.Header) error {
 	var partition int32
 	if key == nil {
@@ -227,15 +237,15 @@ func (ks *KafkaSink) produce(key []byte, value []byte, headers []kafka.Header) e
 	return ks.producer.Produce(&msg, nil)
 }
 
-//get topic partition number
+// get topic partition number
 func topicPartitionsNumber(producer *kafka.Producer, topic string) int32 {
 	metadata, err := producer.GetMetadata(&topic, false, 5000)
 	streams.Check(err)
 	return int32(len(metadata.Topics[topic].Partitions))
 }
 
-//Round Robin partitioning strategy
-//thread-safe, used from main loop goroutine only
+// Round Robin partitioning strategy
+// thread-safe, used from main loop goroutine only
 func (ks *KafkaSink) nextPartition() int32 {
 	ks.partition++
 	partition := (ks.partition & 0x7fffffff) % ks.topicPartitions
@@ -243,12 +253,13 @@ func (ks *KafkaSink) nextPartition() int32 {
 	return partition
 }
 
-//Calculate message partition by key
+// Calculate message partition by key
 func (ks *KafkaSink) keyPartition(key []byte) int32 {
 	hashCode := streams.HashCode(key)
 	return (int32(hashCode) & 0x7fffffff) % ks.topicPartitions
 }
 
+// In returns channel for receiving data
 func (ks *KafkaSink) In() chan<- interface{} {
 	return ks.in
 }

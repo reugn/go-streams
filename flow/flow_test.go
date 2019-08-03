@@ -33,6 +33,11 @@ var flatten = func(in interface{}) []interface{} {
 	return in.([]interface{})
 }
 
+var filterA = func(in interface{}) bool {
+	msg := in.(string)
+	return msg != "a"
+}
+
 func ingest(source []string, in chan interface{}) {
 	for _, e := range source {
 		in <- e
@@ -84,15 +89,16 @@ func TestFlowUtil(t *testing.T) {
 
 	source := ext.NewChanSource(in)
 	flow1 := flow.NewMap(toUpper, 1)
+	filter := flow.NewFilter(filterA, 1)
 	sink := ext.NewChanSink(out)
 
 	var _input = []string{"a", "b", "c"}
-	var _expectedOutput = []string{"a", "a", "b", "b", "c", "c"}
+	var _expectedOutput = []string{"b", "b", "c", "c"}
 
 	go ingest(_input, in)
 	go deferClose(in, time.Second*1)
 	go func() {
-		fanOut := flow.FanOut(source.Via(flow1), 2)
+		fanOut := flow.FanOut(source.Via(filter).Via(flow1), 2)
 		flow.Merge(fanOut...).To(sink)
 	}()
 	var _output []string

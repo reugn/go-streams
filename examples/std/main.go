@@ -8,11 +8,11 @@ import (
 	"github.com/reugn/go-streams/flow"
 )
 
-type Message struct {
+type message struct {
 	Msg string
 }
 
-func (msg *Message) String() string {
+func (msg *message) String() string {
 	return msg.Msg
 }
 
@@ -28,7 +28,7 @@ func main() {
 }
 
 var mapp = func(in interface{}) interface{} {
-	msg := in.(*Message)
+	msg := in.(*message)
 	msg.Msg += "-UTC"
 	return msg
 }
@@ -39,7 +39,7 @@ func tickerChan(repeat time.Duration) chan interface{} {
 	nc := make(chan interface{})
 	go func() {
 		for range oc {
-			nc <- &Message{strconv.FormatInt(time.Now().UTC().UnixNano(), 10)}
+			nc <- &message{strconv.FormatInt(time.Now().UTC().UnixNano(), 10)}
 		}
 	}()
 	return nc

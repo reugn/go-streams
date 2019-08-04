@@ -8,13 +8,14 @@ import (
 	"github.com/reugn/go-streams/flow"
 )
 
-// Redis Pub/Sub Source implementation
+// RedisSource implements Redis Pub/Sub Source
 type RedisSource struct {
 	redisdb *redis.Client
 	channel string
 	out     chan interface{}
 }
 
+// NewRedisSource returns new RedisSource instance
 func NewRedisSource(config *redis.Options, channel string) (*RedisSource, error) {
 	redisdb := redis.NewClient(config)
 	pubsub := redisdb.Subscribe(channel)
@@ -39,22 +40,25 @@ func (rs *RedisSource) init(ch <-chan *redis.Message) {
 	}
 }
 
+// Via streams data through given flow
 func (rs *RedisSource) Via(_flow streams.Flow) streams.Flow {
 	flow.DoStream(rs, _flow)
 	return _flow
 }
 
+// Out returns channel for sending data
 func (rs *RedisSource) Out() <-chan interface{} {
 	return rs.out
 }
 
-// Redis Pub/Sub Sink implementation
+// RedisSink implements Redis Pub/Sub Sink
 type RedisSink struct {
 	redisdb *redis.Client
 	channel string
 	in      chan interface{}
 }
 
+// NewRedisSink returns new RedisSink instance
 func NewRedisSink(config *redis.Options, channel string) *RedisSink {
 	sink := &RedisSink{
 		redis.NewClient(config),
@@ -79,6 +83,7 @@ func (rs *RedisSink) init() {
 	}
 }
 
+// In returns channel for receiving data
 func (rs *RedisSink) In() chan<- interface{} {
 	return rs.in
 }

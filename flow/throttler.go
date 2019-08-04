@@ -11,7 +11,9 @@ import (
 type ThrottleMode int8
 
 const (
+	// Backpressure on overflow mode
 	Backpressure ThrottleMode = iota
+	// Discard on overflow mode
 	Discard
 )
 
@@ -27,7 +29,7 @@ type Throttler struct {
 	counter  uint
 }
 
-//NewThrottler
+//NewThrottler returns new Throttler instance
 //elements - number of elements
 //per - time unit
 //buffer - buffer channel size
@@ -99,19 +101,23 @@ func (th *Throttler) bufferize() {
 	}
 }
 
+// Via streams data through given flow
 func (th *Throttler) Via(flow streams.Flow) streams.Flow {
 	go th.doStream(flow)
 	return flow
 }
 
+// To streams data to given sink
 func (th *Throttler) To(sink streams.Sink) {
 	th.doStream(sink)
 }
 
+// Out returns channel for sending data
 func (th *Throttler) Out() <-chan interface{} {
 	return th.out
 }
 
+// In returns channel for receiving data
 func (th *Throttler) In() chan<- interface{} {
 	return th.in
 }

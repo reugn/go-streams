@@ -22,14 +22,14 @@ type SlidingWindow struct {
 	closed             bool
 }
 
-// Processing time sliding window
+// NewSlidingWindow returns new Processing time sliding window
 // size  - The size of the generated windows
 // slide - The slide interval of the generated windows
 func NewSlidingWindow(size time.Duration, slide time.Duration) *SlidingWindow {
 	return NewSlidingWindowWithTsExtractor(size, slide, nil)
 }
 
-// Event time sliding window
+// NewSlidingWindowWithTsExtractor returns new Event time sliding window
 // Gives correct results on out-of-order events, late events, or on replays of data
 // size  - The size of the generated windows
 // slide - The slide interval of the generated windows
@@ -49,19 +49,23 @@ func NewSlidingWindowWithTsExtractor(size time.Duration, slide time.Duration,
 	return window
 }
 
+// Via streams data through given flow
 func (sw *SlidingWindow) Via(flow streams.Flow) streams.Flow {
 	go sw.transmit(flow)
 	return flow
 }
 
+// To streams data to given sink
 func (sw *SlidingWindow) To(sink streams.Sink) {
 	sw.transmit(sink)
 }
 
+// Out returns channel for sending data
 func (sw *SlidingWindow) Out() <-chan interface{} {
 	return sw.out
 }
 
+// In returns channel for receiving data
 func (sw *SlidingWindow) In() chan<- interface{} {
 	return sw.in
 }

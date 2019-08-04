@@ -19,6 +19,7 @@ Building blocks:
 Flow capabilities (flow package):  
 * Map
 * FlatMap
+* Filter
 * PassThrough
 * Split
 * FanOut

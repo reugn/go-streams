@@ -83,6 +83,7 @@ func (th *Throttler) doNotify() {
 }
 
 //prefill buffer
+//panics on Unsupported ThrottleMode
 func (th *Throttler) bufferize() {
 	defer close(th.out)
 	if th.mode == Discard {

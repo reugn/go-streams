@@ -47,12 +47,14 @@ func NewCommitOffset(consumer *kafka.Consumer) *CommitOffset {
 }
 
 // Via streams data through given flow
+// panics on invalid message type
 func (co *CommitOffset) Via(flow streams.Flow) streams.Flow {
 	go co.loop(flow)
 	return flow
 }
 
 // To streams data to given sink
+// panics on invalid message type
 func (co *CommitOffset) To(sink streams.Sink) {
 	co.loop(sink)
 }

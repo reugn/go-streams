@@ -23,6 +23,6 @@ func main() {
 
 var toUpper = func(in interface{}) interface{} {
 	msg := in.(string)
-	fmt.Println("Got: %s", msg)
+	fmt.Printf("Got: %s\n", msg)
 	return strings.ToUpper(msg)
 }

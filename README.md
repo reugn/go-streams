@@ -31,7 +31,9 @@ Flow capabilities (flow package):
 Supported Sources and Sinks (ext package):
 * Go channels
 * File system
-* [Kafka](https://kafka.apache.org/)
+* Network (TCP, UDP)
+* [Apache Kafka](https://kafka.apache.org/)
+* [Apache Pulsar](https://pulsar.apache.org/)
 * [Redis](https://redis.io/)
 
 ## Examples

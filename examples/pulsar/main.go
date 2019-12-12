@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"strings"
 
 	"github.com/apache/pulsar-client-go/pulsar"
@@ -18,10 +19,12 @@ func main() {
 		Type:             pulsar.Exclusive,
 	}
 
-	source, err := ext.NewPulsarSource(&clientOptions, &consumerOptions)
+	ctx := context.Background()
+	source, err := ext.NewPulsarSource(ctx, &clientOptions, &consumerOptions)
 	streams.Check(err)
 	flow1 := flow.NewMap(toUpper, 1)
-	sink := ext.NewPulsarSink(&clientOptions, &producerOptions)
+	sink, err := ext.NewPulsarSink(ctx, &clientOptions, &producerOptions)
+	streams.Check(err)
 
 	source.Via(flow1).To(sink)
 }

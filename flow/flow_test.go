@@ -93,7 +93,7 @@ func TestFlowUtil(t *testing.T) {
 	sink := ext.NewChanSink(out)
 
 	var _input = []string{"a", "b", "c"}
-	var _expectedOutput = []string{"b", "b", "c", "c"}
+	var _expectedOutput = []string{"B", "B", "C", "C"}
 
 	go ingest(_input, in)
 	go deferClose(in, time.Second*1)

@@ -16,6 +16,7 @@ type FlatMapFunc func(interface{}) []interface{}
 type FlatMap struct {
 	FlatMapF    FlatMapFunc
 	in          chan interface{}
+	out         chan interface{}
 	parallelism uint
 }
 
@@ -23,27 +24,30 @@ type FlatMap struct {
 // FlatMapFunc - transformation function
 // parallelism - parallelism factor, in case events order matters use parallelism = 1
 func NewFlatMap(f FlatMapFunc, parallelism uint) *FlatMap {
-	return &FlatMap{
+	flatMap := &FlatMap{
 		f,
+		make(chan interface{}),
 		make(chan interface{}),
 		parallelism,
 	}
+	go flatMap.doStream()
+	return flatMap
 }
 
 // Via streams data through given flow
 func (fm *FlatMap) Via(flow streams.Flow) streams.Flow {
-	go fm.doStream(flow)
+	go fm.transmit(flow)
 	return flow
 }
 
 // To streams data to given sink
 func (fm *FlatMap) To(sink streams.Sink) {
-	fm.doStream(sink)
+	fm.transmit(sink)
 }
 
 // Out returns channel for sending data
 func (fm *FlatMap) Out() <-chan interface{} {
-	return fm.in
+	return fm.out
 }
 
 // In returns channel for receiving data
@@ -51,7 +55,14 @@ func (fm *FlatMap) In() chan<- interface{} {
 	return fm.in
 }
 
-func (fm *FlatMap) doStream(inlet streams.Inlet) {
+func (fm *FlatMap) transmit(inlet streams.Inlet) {
+	for elem := range fm.Out() {
+		inlet.In() <- elem
+	}
+	close(inlet.In())
+}
+
+func (fm *FlatMap) doStream() {
 	sem := make(chan struct{}, fm.parallelism)
 	for elem := range fm.in {
 		sem <- struct{}{}
@@ -59,12 +70,12 @@ func (fm *FlatMap) doStream(inlet streams.Inlet) {
 			defer func() { <-sem }()
 			trans := fm.FlatMapF(e)
 			for _, item := range trans {
-				inlet.In() <- item
+				fm.out <- item
 			}
 		}(elem)
 	}
 	for i := 0; i < int(fm.parallelism); i++ {
 		sem <- struct{}{}
 	}
-	close(inlet.In())
+	close(fm.out)
 }

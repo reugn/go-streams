@@ -11,6 +11,7 @@ type FilterFunc func(interface{}) bool
 type Filter struct {
 	FilterF     FilterFunc
 	in          chan interface{}
+	out         chan interface{}
 	parallelism uint
 }
 
@@ -18,27 +19,30 @@ type Filter struct {
 // FilterFunc - resolver function
 // parallelism - parallelism factor, in case events order matters use parallelism = 1
 func NewFilter(f FilterFunc, parallelism uint) *Filter {
-	return &Filter{
+	filter := &Filter{
 		f,
+		make(chan interface{}),
 		make(chan interface{}),
 		parallelism,
 	}
+	go filter.doStream()
+	return filter
 }
 
 // Via streams data through given flow
 func (f *Filter) Via(flow streams.Flow) streams.Flow {
-	go f.doStream(flow)
+	go f.transmit(flow)
 	return flow
 }
 
 // To streams data to given sink
 func (f *Filter) To(sink streams.Sink) {
-	f.doStream(sink)
+	f.transmit(sink)
 }
 
 // Out returns channel for sending data
 func (f *Filter) Out() <-chan interface{} {
-	return f.in
+	return f.out
 }
 
 // In returns channel for receiving data
@@ -46,20 +50,27 @@ func (f *Filter) In() chan<- interface{} {
 	return f.in
 }
 
+func (f *Filter) transmit(inlet streams.Inlet) {
+	for elem := range f.Out() {
+		inlet.In() <- elem
+	}
+	close(inlet.In())
+}
+
 // throws items not satisfying filter function
-func (f *Filter) doStream(inlet streams.Inlet) {
+func (f *Filter) doStream() {
 	sem := make(chan struct{}, f.parallelism)
 	for elem := range f.in {
 		sem <- struct{}{}
 		go func(e interface{}) {
 			defer func() { <-sem }()
 			if f.FilterF(e) {
-				inlet.In() <- e
+				f.out <- e
 			}
 		}(elem)
 	}
 	for i := 0; i < int(f.parallelism); i++ {
 		sem <- struct{}{}
 	}
-	close(inlet.In())
+	close(f.out)
 }

@@ -119,6 +119,9 @@ func (sw *SlidingWindow) emit() {
 					break
 				}
 			}
+			if slideUpperIndex == 0 {
+				slideUpperIndex = windowUpperIndex - 1
+			}
 			windowSlice := extract(sw.queue.Slice(windowBottomIndex, windowUpperIndex))
 			if windowUpperIndex > 0 {
 				s := sw.queue.Slice(slideUpperIndex+1, windowUpperIndex)

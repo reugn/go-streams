@@ -1,0 +1,183 @@
+package ext
+
+import (
+	"context"
+	"log"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
+
+	"github.com/Shopify/sarama"
+	"github.com/reugn/go-streams"
+	"github.com/reugn/go-streams/flow"
+)
+
+// KafkaSource connector
+type KafkaSource struct {
+	consumer  sarama.ConsumerGroup
+	handler   sarama.ConsumerGroupHandler
+	topics    []string
+	out       chan interface{}
+	ctx       context.Context
+	cancelCtx context.CancelFunc
+	wg        *sync.WaitGroup
+}
+
+// NewKafkaSource returns a new KafkaSource instance
+func NewKafkaSource(ctx context.Context, addrs []string, groupID string,
+	config *sarama.Config, topics ...string) *KafkaSource {
+	consumerGroup, err := sarama.NewConsumerGroup(addrs, groupID, config)
+	streams.Check(err)
+	out := make(chan interface{})
+	cctx, cancel := context.WithCancel(ctx)
+	sink := &KafkaSource{
+		consumerGroup,
+		&GroupHandler{make(chan struct{}), out},
+		topics,
+		out,
+		cctx,
+		cancel,
+		&sync.WaitGroup{},
+	}
+	go sink.init()
+	return sink
+}
+
+func (ks *KafkaSource) claimLoop() {
+	ks.wg.Add(1)
+	defer func() {
+		ks.wg.Done()
+		log.Printf("Exiting kafka claimLoop\n")
+	}()
+	for {
+		handler := ks.handler.(*GroupHandler)
+		// `Consume` should be called inside an infinite loop, when a
+		// server-side rebalance happens, the consumer session will need to be
+		// recreated to get the new claims
+		if err := ks.consumer.Consume(ks.ctx, ks.topics, handler); err != nil {
+			log.Printf("Error from consumer: %v", err)
+		}
+
+		select {
+		case <-ks.ctx.Done():
+			return
+		default:
+		}
+
+		handler.ready = make(chan struct{})
+	}
+}
+
+// init starts the main loop
+func (ks *KafkaSource) init() {
+	sigchan := make(chan os.Signal, 1)
+	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
+	go ks.claimLoop()
+
+	select {
+	case <-sigchan:
+		ks.cancelCtx()
+	case <-ks.ctx.Done():
+	}
+
+	log.Printf("Closing kafka consumer\n")
+	ks.wg.Wait()
+	close(ks.out)
+	ks.consumer.Close()
+}
+
+// Via streams a data through the given flow
+func (ks *KafkaSource) Via(_flow streams.Flow) streams.Flow {
+	flow.DoStream(ks, _flow)
+	return _flow
+}
+
+// Out returns an output channel for sending data
+func (ks *KafkaSource) Out() <-chan interface{} {
+	return ks.out
+}
+
+// GroupHandler represents a Sarama consumer group handler
+type GroupHandler struct {
+	ready chan struct{}
+	out   chan interface{}
+}
+
+// Setup is run at the beginning of a new session, before ConsumeClaim
+func (handler *GroupHandler) Setup(sarama.ConsumerGroupSession) error {
+	// Mark the consumer as ready
+	close(handler.ready)
+	return nil
+}
+
+// Cleanup is run at the end of a session, once all ConsumeClaim goroutines have exited
+func (handler *GroupHandler) Cleanup(sarama.ConsumerGroupSession) error {
+	return nil
+}
+
+// ConsumeClaim must start a consumer loop of ConsumerGroupClaim's Messages().
+func (handler *GroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	for {
+		select {
+		case message := <-claim.Messages():
+			if message != nil {
+				log.Printf("Message claimed: value = %s, timestamp = %v, topic = %s\n", string(message.Value), message.Timestamp, message.Topic)
+				session.MarkMessage(message, "")
+				handler.out <- message
+			}
+		case <-session.Context().Done():
+			return session.Context().Err()
+		}
+	}
+}
+
+// KafkaSink connector
+type KafkaSink struct {
+	producer sarama.SyncProducer
+	topic    string
+	in       chan interface{}
+}
+
+// NewKafkaSink returns a new KafkaSink instance
+func NewKafkaSink(addrs []string, config *sarama.Config, topic string) *KafkaSink {
+	producer, err := sarama.NewSyncProducer(addrs, config)
+	streams.Check(err)
+	sink := &KafkaSink{
+		producer,
+		topic,
+		make(chan interface{}),
+	}
+	go sink.init()
+	return sink
+}
+
+// init starts the main loop
+func (ks *KafkaSink) init() {
+	for msg := range ks.in {
+		switch m := msg.(type) {
+		case *sarama.ProducerMessage:
+			ks.producer.SendMessage(m)
+		case *sarama.ConsumerMessage:
+			sMsg := &sarama.ProducerMessage{
+				Topic: ks.topic,
+				Key:   sarama.StringEncoder(m.Key),
+				Value: sarama.StringEncoder(m.Value),
+			}
+			ks.producer.SendMessage(sMsg)
+		case string:
+			sMsg := &sarama.ProducerMessage{
+				Topic: ks.topic,
+				Value: sarama.StringEncoder(m),
+			}
+			ks.producer.SendMessage(sMsg)
+		}
+	}
+	log.Printf("Closing kafka producer\n")
+	ks.producer.Close()
+}
+
+// In returns an input channel for receiving data
+func (ks *KafkaSink) In() chan<- interface{} {
+	return ks.in
+}

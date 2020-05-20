@@ -108,7 +108,6 @@ func (sw *SlidingWindow) emit() {
 			// build a window slice and send it to the out chan
 			var windowBottomIndex int
 			now := streams.NowNano()
-			// solve oom
 			windowUpperIndex := sw.queue.Len()
 			slideUpperIndex := windowUpperIndex
 			slideUpperTime := now - sw.size.Nanoseconds() + sw.slide.Nanoseconds()
@@ -124,7 +123,6 @@ func (sw *SlidingWindow) emit() {
 			}
 			windowSlice := extract(sw.queue.Slice(windowBottomIndex, windowUpperIndex))
 			if windowUpperIndex > 0 {
-				// slideUpperIndex+1,cause lost data
 				s := sw.queue.Slice(slideUpperIndex, windowUpperIndex)
 				// reset the queue
 				sw.queue = &s

@@ -2,6 +2,7 @@ package ext
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"log"
 	"net"
@@ -23,14 +24,15 @@ const (
 
 // NetSource network socket connector
 type NetSource struct {
+	ctx      context.Context
 	conn     net.Conn
 	listener net.Listener
 	connType ConnType
 	out      chan interface{}
 }
 
-// NewNetSource creates a new NetSource
-func NewNetSource(connType ConnType, address string) (*NetSource, error) {
+// NewNetSource returns a new NetSource instance
+func NewNetSource(ctx context.Context, connType ConnType, address string) (*NetSource, error) {
 	var err error
 	var conn net.Conn
 	var listener net.Listener
@@ -40,79 +42,90 @@ func NewNetSource(connType ConnType, address string) (*NetSource, error) {
 	case TCP:
 		addr, _ := net.ResolveTCPAddr(string(connType), address)
 		listener, err = net.ListenTCP(string(connType), addr)
-
 		if err != nil {
-			log.Fatal(err)
 			return nil, err
 		}
-
-		go acceptConnections(listener, out)
-
+		go acceptConnections(ctx, listener, out)
 	case UDP:
 		addr, _ := net.ResolveUDPAddr(string(connType), address)
 		conn, err = net.ListenUDP(string(connType), addr)
-
 		if err != nil {
-			log.Fatal(err)
 			return nil, err
 		}
-
 		go handleConnection(conn, out)
-
 	default:
 		return nil, errors.New("Invalid connection type")
 	}
 
 	source := &NetSource{
+		ctx:      ctx,
 		conn:     conn,
 		listener: listener,
 		connType: connType,
 		out:      out,
 	}
 
+	go source.listenCtx()
 	return source, nil
 }
 
-// TCP Accept routine
-func acceptConnections(listener net.Listener, out chan<- interface{}) {
-	for {
-		// accept new connection
-		conn, err := listener.Accept()
-		if err != nil {
-			log.Fatal(err)
+func (ns *NetSource) listenCtx() {
+	select {
+	case <-ns.ctx.Done():
+		if ns.conn != nil {
+			ns.conn.Close()
+		}
+		if ns.listener != nil {
+			ns.listener.Close()
 		}
 
-		// handle new connection
-		go handleConnection(conn, out)
+		close(ns.out)
 	}
-	log.Printf("Closing NetSource TCP listener %v", listener)
-	listener.Close()
 }
 
-// handleConnection routine
+// TCP Accept routine
+func acceptConnections(ctx context.Context, listener net.Listener, out chan<- interface{}) {
+	for {
+		// accept a new connection
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Printf("listener.Accept() failed with: %s", err)
+			return
+		}
+
+		// handle the new connection
+		go handleConnection(conn, out)
+	}
+}
+
+// a handleConnection routine
 func handleConnection(conn net.Conn, out chan<- interface{}) {
 	log.Printf("NetSource connected on: %v", conn.LocalAddr())
 	reader := bufio.NewReader(conn)
+
 	for {
 		bufferBytes, err := reader.ReadBytes('\n')
-		if err != nil {
-			log.Fatal(err)
-			break
-		} else {
+		if len(bufferBytes) > 0 {
 			out <- string(bufferBytes)
 		}
+
+		if err != nil {
+			log.Printf("handleConnection failed with: %s", err)
+			break
+		}
 	}
-	log.Printf("Closing NetSource connection %v", conn)
+
+	log.Printf("Closing a NetSource connection %v", conn)
 	conn.Close()
 }
 
-// Via streams data through given flow
+// Via streams data through the given flow
 func (ns *NetSource) Via(_flow streams.Flow) streams.Flow {
 	flow.DoStream(ns, _flow)
 	return _flow
 }
 
-// Out returns channel for sending data
+// Out returns an output channel for sending data
 func (ns *NetSource) Out() <-chan interface{} {
 	return ns.out
 }
@@ -124,7 +137,7 @@ type NetSink struct {
 	in       chan interface{}
 }
 
-// NewNetSink creates a new NetSink
+// NewNetSink returns a new NetSink instance
 func NewNetSink(connType ConnType, address string) (*NetSink, error) {
 	var err error
 	var conn net.Conn
@@ -144,10 +157,11 @@ func NewNetSink(connType ConnType, address string) (*NetSink, error) {
 	return sink, nil
 }
 
-// start main loop
+// init starts the main loop
 func (ns *NetSink) init() {
 	log.Printf("NetSink connected on: %v", ns.conn.LocalAddr())
 	writer := bufio.NewWriter(ns.conn)
+
 	for msg := range ns.in {
 		switch m := msg.(type) {
 		case string:
@@ -155,13 +169,16 @@ func (ns *NetSink) init() {
 			if err == nil {
 				err = writer.Flush()
 			}
+		default:
+			log.Printf("Unsupported message type %v", m)
 		}
 	}
+
 	log.Printf("Closing NetSink connection %v", ns.conn)
 	ns.conn.Close()
 }
 
-// In returns channel for receiving data
+// In returns an input channel for receiving data
 func (ns *NetSink) In() chan<- interface{} {
 	return ns.in
 }

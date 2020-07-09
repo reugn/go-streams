@@ -31,6 +31,7 @@ func NewKafkaSource(ctx context.Context, addrs []string, groupID string,
 	streams.Check(err)
 	out := make(chan interface{})
 	cctx, cancel := context.WithCancel(ctx)
+
 	sink := &KafkaSource{
 		consumerGroup,
 		&GroupHandler{make(chan struct{}), out},
@@ -40,6 +41,7 @@ func NewKafkaSource(ctx context.Context, addrs []string, groupID string,
 		cancel,
 		&sync.WaitGroup{},
 	}
+
 	go sink.init()
 	return sink
 }
@@ -48,7 +50,7 @@ func (ks *KafkaSource) claimLoop() {
 	ks.wg.Add(1)
 	defer func() {
 		ks.wg.Done()
-		log.Printf("Exiting kafka claimLoop\n")
+		log.Printf("Exiting kafka claimLoop")
 	}()
 	for {
 		handler := ks.handler.(*GroupHandler)
@@ -56,7 +58,7 @@ func (ks *KafkaSource) claimLoop() {
 		// server-side rebalance happens, the consumer session will need to be
 		// recreated to get the new claims
 		if err := ks.consumer.Consume(ks.ctx, ks.topics, handler); err != nil {
-			log.Printf("Error from consumer: %v", err)
+			log.Printf("Kafka consumer.Consume failed with: %v", err)
 		}
 
 		select {
@@ -81,13 +83,13 @@ func (ks *KafkaSource) init() {
 	case <-ks.ctx.Done():
 	}
 
-	log.Printf("Closing kafka consumer\n")
+	log.Printf("Closing kafka consumer")
 	ks.wg.Wait()
 	close(ks.out)
 	ks.consumer.Close()
 }
 
-// Via streams a data through the given flow
+// Via streams data through the given flow
 func (ks *KafkaSource) Via(_flow streams.Flow) streams.Flow {
 	flow.DoStream(ks, _flow)
 	return _flow
@@ -122,7 +124,8 @@ func (handler *GroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, c
 		select {
 		case message := <-claim.Messages():
 			if message != nil {
-				log.Printf("Message claimed: value = %s, timestamp = %v, topic = %s\n", string(message.Value), message.Timestamp, message.Topic)
+				log.Printf("Message claimed: value = %s, timestamp = %v, topic = %s",
+					string(message.Value), message.Timestamp, message.Topic)
 				session.MarkMessage(message, "")
 				handler.out <- message
 			}
@@ -171,9 +174,11 @@ func (ks *KafkaSink) init() {
 				Value: sarama.StringEncoder(m),
 			}
 			ks.producer.SendMessage(sMsg)
+		default:
+			log.Printf("Unsupported message type %v", m)
 		}
 	}
-	log.Printf("Closing kafka producer\n")
+	log.Printf("Closing kafka producer")
 	ks.producer.Close()
 }
 

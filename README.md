@@ -32,6 +32,7 @@ Supported Sources and Sinks (ext package):
 * Go channels
 * File system
 * Network (TCP, UDP)
+* [Aerospike](https://www.aerospike.com/)
 * [Apache Kafka](https://kafka.apache.org/)
 * [Apache Pulsar](https://pulsar.apache.org/)
 * [Redis](https://redis.io/)

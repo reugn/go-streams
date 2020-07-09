@@ -106,9 +106,10 @@ func (sw *SlidingWindow) emit() {
 		case <-time.After(sw.slide):
 			sw.Lock()
 			// build a window slice and send it to the out chan
-			var slideUpperIndex, windowBottomIndex int
+			var windowBottomIndex int
 			now := streams.NowNano()
 			windowUpperIndex := sw.queue.Len()
+			slideUpperIndex := windowUpperIndex
 			slideUpperTime := now - sw.size.Nanoseconds() + sw.slide.Nanoseconds()
 			windowBottomTime := now - sw.size.Nanoseconds()
 			for i, item := range *sw.queue {
@@ -120,12 +121,9 @@ func (sw *SlidingWindow) emit() {
 					break
 				}
 			}
-			if slideUpperIndex == 0 {
-				slideUpperIndex = windowUpperIndex - 1
-			}
 			windowSlice := extract(sw.queue.Slice(windowBottomIndex, windowUpperIndex))
 			if windowUpperIndex > 0 {
-				s := sw.queue.Slice(slideUpperIndex+1, windowUpperIndex)
+				s := sw.queue.Slice(slideUpperIndex, windowUpperIndex)
 				// reset the queue
 				sw.queue = &s
 				heap.Init(sw.queue)

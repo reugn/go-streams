@@ -4,10 +4,11 @@ import (
 	"github.com/reugn/go-streams"
 )
 
-// FlatMapFunc transformer
+// FlatMapFunc is a FlatMap transformation function.
 type FlatMapFunc func(interface{}) []interface{}
 
-// FlatMap function transformation flow
+// FlatMap takes one element and produces zero, one, or more elements.
+//
 // in  -- 1 -- 2 ---- 3 -- 4 ------ 5 --
 //        |    |      |    |        |
 //    [---------- FlatMapFunc ----------]
@@ -20,12 +21,12 @@ type FlatMap struct {
 	parallelism uint
 }
 
-// NewFlatMap returns new FlatMap instance
-// FlatMapFunc - transformation function
-// parallelism - parallelism factor, in case events order matters use parallelism = 1
-func NewFlatMap(f FlatMapFunc, parallelism uint) *FlatMap {
+// NewFlatMap returns a new FlatMap instance.
+// flatMapFunc is the FlatMap transformation function.
+// parallelism is the flow parallelism factor. In case the events order matters, use parallelism = 1.
+func NewFlatMap(flatMapFunc FlatMapFunc, parallelism uint) *FlatMap {
 	flatMap := &FlatMap{
-		f,
+		flatMapFunc,
 		make(chan interface{}),
 		make(chan interface{}),
 		parallelism,
@@ -34,23 +35,23 @@ func NewFlatMap(f FlatMapFunc, parallelism uint) *FlatMap {
 	return flatMap
 }
 
-// Via streams data through given flow
+// Via streams data through the given flow
 func (fm *FlatMap) Via(flow streams.Flow) streams.Flow {
 	go fm.transmit(flow)
 	return flow
 }
 
-// To streams data to given sink
+// To streams data to the given sink
 func (fm *FlatMap) To(sink streams.Sink) {
 	fm.transmit(sink)
 }
 
-// Out returns channel for sending data
+// Out returns an output channel for sending data
 func (fm *FlatMap) Out() <-chan interface{} {
 	return fm.out
 }
 
-// In returns channel for receiving data
+// In returns an input channel for receiving data
 func (fm *FlatMap) In() chan<- interface{} {
 	return fm.in
 }

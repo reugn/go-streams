@@ -4,10 +4,18 @@ import (
 	"github.com/reugn/go-streams"
 )
 
-// FilterFunc resolver
+// FilterFunc is a filter predicate function.
 type FilterFunc func(interface{}) bool
 
-// Filter stream flow
+// Filter filters the incoming elements using a predicate.
+// If the predicate returns true the element is passed downstream,
+// if it returns false the element is discarded.
+//
+// in  -- 1 -- 2 ---- 3 -- 4 ------ 5 --
+//        |    |      |    |        |
+//    [---------- FilterFunc -----------]
+//        |    |                    |
+// out -- 1 -- 2 ------------------ 5 --
 type Filter struct {
 	FilterF     FilterFunc
 	in          chan interface{}
@@ -15,12 +23,12 @@ type Filter struct {
 	parallelism uint
 }
 
-// NewFilter returns new Filter instance
-// FilterFunc - resolver function
-// parallelism - parallelism factor, in case events order matters use parallelism = 1
-func NewFilter(f FilterFunc, parallelism uint) *Filter {
+// NewFilter returns a new Filter instance.
+// filterFunc is the filter predicate function.
+// parallelism is the flow parallelism factor. In case the events order matters, use parallelism = 1.
+func NewFilter(filterFunc FilterFunc, parallelism uint) *Filter {
 	filter := &Filter{
-		f,
+		filterFunc,
 		make(chan interface{}),
 		make(chan interface{}),
 		parallelism,
@@ -29,23 +37,23 @@ func NewFilter(f FilterFunc, parallelism uint) *Filter {
 	return filter
 }
 
-// Via streams data through given flow
+// Via streams data through the given flow
 func (f *Filter) Via(flow streams.Flow) streams.Flow {
 	go f.transmit(flow)
 	return flow
 }
 
-// To streams data to given sink
+// To streams data to the given sink
 func (f *Filter) To(sink streams.Sink) {
 	f.transmit(sink)
 }
 
-// Out returns channel for sending data
+// Out returns an output channel for sending data
 func (f *Filter) Out() <-chan interface{} {
 	return f.out
 }
 
-// In returns channel for receiving data
+// In returns an input channel for receiving data
 func (f *Filter) In() chan<- interface{} {
 	return f.in
 }
@@ -57,7 +65,7 @@ func (f *Filter) transmit(inlet streams.Inlet) {
 	close(inlet.In())
 }
 
-// throws items not satisfying filter function
+// throws items that are not satisfying the filter function
 func (f *Filter) doStream() {
 	sem := make(chan struct{}, f.parallelism)
 	for elem := range f.in {

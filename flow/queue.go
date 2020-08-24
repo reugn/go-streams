@@ -2,37 +2,38 @@ package flow
 
 import "container/heap"
 
-// Item of PriorityQueue
+// Item is the PriorityQueue item.
 type Item struct {
 	Msg   interface{}
-	epoch int64 // item priority by epoch time
-	index int   // maintained by the heap.Interface methods
+	epoch int64 // item priority, backed by the epoch time.
+	index int   // maintained by the heap.Interface methods.
 }
 
-// NewItem constructor
+// NewItem returns a new Item.
 func NewItem(msg interface{}, epoch int64, index int) *Item {
 	return &Item{msg, epoch, index}
 }
 
-// PriorityQueue implements heap.Interface
+// PriorityQueue implements the heap.Interface.
 type PriorityQueue []*Item
 
-// Len returns PriorityQueue length
+// Len returns the PriorityQueue length.
 func (pq PriorityQueue) Len() int { return len(pq) }
 
-// Less comparator
+// Less is the items less comparator.
 func (pq PriorityQueue) Less(i, j int) bool {
 	return pq[i].epoch < pq[j].epoch
 }
 
-// Swap items by indexes
+// Swap exchanges the indexes of the items.
 func (pq PriorityQueue) Swap(i, j int) {
 	pq[i], pq[j] = pq[j], pq[i]
 	pq[i].index = i
 	pq[j].index = j
 }
 
-// Push item to the Queue
+// Push implements the heap.Interface.Push.
+// Appends the item to the PriorityQueue.
 func (pq *PriorityQueue) Push(x interface{}) {
 	n := len(*pq)
 	item := x.(*Item)
@@ -40,7 +41,8 @@ func (pq *PriorityQueue) Push(x interface{}) {
 	*pq = append(*pq, item)
 }
 
-// Pop item from the Queue
+// Pop implements the heap.Interface.Pop.
+// Removes and returns the Len() - 1 element.
 func (pq *PriorityQueue) Pop() interface{} {
 	old := *pq
 	n := len(old)
@@ -50,18 +52,18 @@ func (pq *PriorityQueue) Pop() interface{} {
 	return item
 }
 
-// Head returns Queue head item
+// Head returns the first item of the PriorityQueue without removing it.
 func (pq *PriorityQueue) Head() *Item {
 	return (*pq)[0]
 }
 
-// Update item epoch
+// Update sets the item's priority and calls the heap.Fix to re-establish the heap ordering.
 func (pq *PriorityQueue) Update(item *Item, newEpoch int64) {
 	item.epoch = newEpoch
 	heap.Fix(pq, item.index)
 }
 
-// Slice Queue
+// Slice returns the sliced PriorityQueue using the given bounds.
 func (pq PriorityQueue) Slice(start, end int) PriorityQueue {
 	return pq[start:end]
 }

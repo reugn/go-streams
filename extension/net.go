@@ -167,7 +167,7 @@ func (ns *NetSink) init() {
 		case string:
 			_, err := writer.WriteString(m)
 			if err == nil {
-				err = writer.Flush()
+				writer.Flush()
 			}
 		default:
 			log.Printf("Unsupported message type %v", m)

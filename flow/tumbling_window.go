@@ -7,9 +7,8 @@ import (
 	"github.com/reugn/go-streams"
 )
 
-// TumblingWindow flow
-// Generates windows of a specified window size
-// Tumbling windows have a fixed size and do not overlap
+// TumblingWindow assigns each element to a window of a specified window size.
+// Tumbling windows have a fixed size and do not overlap.
 type TumblingWindow struct {
 	sync.Mutex
 	size   time.Duration
@@ -19,13 +18,16 @@ type TumblingWindow struct {
 	buffer []interface{}
 }
 
-// NewTumblingWindow returns a new TumblingWindow instance
-// size - The size of the generated windows
+// Verify TumblingWindow satisfies the Flow interface.
+var _ streams.Flow = (*TumblingWindow)(nil)
+
+// NewTumblingWindow returns a new TumblingWindow instance.
+// size is the size of the generated windows.
 func NewTumblingWindow(size time.Duration) *TumblingWindow {
 	window := &TumblingWindow{
 		size: size,
 		in:   make(chan interface{}),
-		out:  make(chan interface{}), //windows channel
+		out:  make(chan interface{}), // windows channel
 		done: make(chan struct{}),
 	}
 	go window.receive()
@@ -33,13 +35,13 @@ func NewTumblingWindow(size time.Duration) *TumblingWindow {
 	return window
 }
 
-// Via streams a data through the given flow
+// Via streams data through the given flow
 func (tw *TumblingWindow) Via(flow streams.Flow) streams.Flow {
 	go tw.transmit(flow)
 	return flow
 }
 
-// To streams a data to the given sink
+// To streams data to the given sink
 func (tw *TumblingWindow) To(sink streams.Sink) {
 	tw.transmit(sink)
 }
@@ -54,7 +56,7 @@ func (tw *TumblingWindow) In() chan<- interface{} {
 	return tw.in
 }
 
-// retransmit the emitted window to the next Inlet
+// submit emitted windows to the next Inlet
 func (tw *TumblingWindow) transmit(inlet streams.Inlet) {
 	for elem := range tw.Out() {
 		inlet.In() <- elem
@@ -81,7 +83,7 @@ func (tw *TumblingWindow) emit() {
 			windowSlice := append(tw.buffer[:0:0], tw.buffer...)
 			tw.buffer = nil
 			tw.Unlock()
-			// send to the out chan
+			// send window slice to the out chan
 			if len(windowSlice) > 0 {
 				tw.out <- windowSlice
 			}

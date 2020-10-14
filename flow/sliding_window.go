@@ -8,9 +8,10 @@ import (
 	"github.com/reugn/go-streams"
 )
 
-// SlidingWindow flow
-// Generates windows of a specified fixed size
-// Slides by a slide interval with records overlap
+// SlidingWindow assigns elements to windows of fixed length configured by the window size parameter.
+// An additional window slide parameter controls how frequently a sliding window is started.
+// Hence, sliding windows can be overlapping if the slide is smaller than the window size.
+// In this case elements are assigned to multiple windows.
 type SlidingWindow struct {
 	sync.Mutex
 	size               time.Duration
@@ -22,18 +23,23 @@ type SlidingWindow struct {
 	timestampExtractor func(interface{}) int64
 }
 
-// NewSlidingWindow returns a new Processing time sliding window
-// size  - The size of the generated windows
-// slide - The slide interval of the generated windows
+// Verify SlidingWindow satisfies the Flow interface.
+var _ streams.Flow = (*SlidingWindow)(nil)
+
+// NewSlidingWindow returns a new processing time based SlidingWindow.
+// Processing time refers to the system time of the machine that is executing the respective operation.
+// size is the size of the generated windows.
+// slide is the sliding interval of the generated windows.
 func NewSlidingWindow(size time.Duration, slide time.Duration) *SlidingWindow {
 	return NewSlidingWindowWithTsExtractor(size, slide, nil)
 }
 
-// NewSlidingWindowWithTsExtractor returns a new Event time sliding window
-// Gives correct results on out-of-order events, late events, or on replays of data
-// size  - The size of the generated windows
-// slide - The slide interval of the generated windows
-// timestampExtractor - The record timestamp (in nanoseconds) extractor
+// NewSlidingWindowWithTsExtractor returns a new event time based SlidingWindow.
+// Event time is the time that each individual event occurred on its producing device.
+// Gives correct results on out-of-order events, late events, or on replays of data.
+// size is the size of the generated windows.
+// slide is the sliding interval of the generated windows.
+// timestampExtractor is the record timestamp (in nanoseconds) extractor.
 func NewSlidingWindowWithTsExtractor(size time.Duration, slide time.Duration,
 	timestampExtractor func(interface{}) int64) *SlidingWindow {
 	window := &SlidingWindow{
@@ -41,7 +47,7 @@ func NewSlidingWindowWithTsExtractor(size time.Duration, slide time.Duration,
 		slide:              slide,
 		queue:              &PriorityQueue{},
 		in:                 make(chan interface{}),
-		out:                make(chan interface{}), //windows channel
+		out:                make(chan interface{}), // windows channel
 		done:               make(chan struct{}),
 		timestampExtractor: timestampExtractor,
 	}
@@ -50,13 +56,13 @@ func NewSlidingWindowWithTsExtractor(size time.Duration, slide time.Duration,
 	return window
 }
 
-// Via streams a data through the given flow
+// Via streams data through the given flow
 func (sw *SlidingWindow) Via(flow streams.Flow) streams.Flow {
 	go sw.transmit(flow)
 	return flow
 }
 
-// To streams a data to the given sink
+// To streams data to the given sink
 func (sw *SlidingWindow) To(sink streams.Sink) {
 	sw.transmit(sink)
 }
@@ -71,7 +77,7 @@ func (sw *SlidingWindow) In() chan<- interface{} {
 	return sw.in
 }
 
-// retransmit an emitted window to the next Inlet
+// submit emitted windows to the next Inlet
 func (sw *SlidingWindow) transmit(inlet streams.Inlet) {
 	for elem := range sw.Out() {
 		inlet.In() <- elem
@@ -79,7 +85,7 @@ func (sw *SlidingWindow) transmit(inlet streams.Inlet) {
 	close(inlet.In())
 }
 
-// extract a timestamp from the record if timestampExtractor is set
+// extract timestamp from the record if the timestampExtractor is set
 // return the system clock time otherwise
 func (sw *SlidingWindow) timestamp(elem interface{}) int64 {
 	if sw.timestampExtractor == nil {
@@ -99,7 +105,7 @@ func (sw *SlidingWindow) receive() {
 	close(sw.out)
 }
 
-// triggered by the slide interval
+// emit is triggered by the sliding interval
 func (sw *SlidingWindow) emit() {
 	for {
 		select {
@@ -130,7 +136,7 @@ func (sw *SlidingWindow) emit() {
 			}
 			sw.Unlock()
 
-			// send to the out chan
+			// send window slice to the out chan
 			if len(windowSlice) > 0 {
 				sw.out <- windowSlice
 			}

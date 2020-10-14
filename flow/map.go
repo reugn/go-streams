@@ -21,6 +21,9 @@ type Map struct {
 	parallelism uint
 }
 
+// Verify Map satisfies the Flow interface.
+var _ streams.Flow = (*Map)(nil)
+
 // NewMap returns a new Map instance.
 // mapFunc is the Map transformation function.
 // parallelism is the flow parallelism factor. In case the events order matters, use parallelism = 1.

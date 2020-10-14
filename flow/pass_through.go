@@ -14,6 +14,9 @@ type PassThrough struct {
 	out chan interface{}
 }
 
+// Verify PassThrough satisfies the Flow interface.
+var _ streams.Flow = (*PassThrough)(nil)
+
 // NewPassThrough returns a new PassThrough instance.
 func NewPassThrough() *PassThrough {
 	passThrough := &PassThrough{

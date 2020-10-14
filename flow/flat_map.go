@@ -21,6 +21,9 @@ type FlatMap struct {
 	parallelism uint
 }
 
+// Verify FlatMap satisfies the Flow interface.
+var _ streams.Flow = (*FlatMap)(nil)
+
 // NewFlatMap returns a new FlatMap instance.
 // flatMapFunc is the FlatMap transformation function.
 // parallelism is the flow parallelism factor. In case the events order matters, use parallelism = 1.

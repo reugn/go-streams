@@ -23,6 +23,9 @@ type Filter struct {
 	parallelism uint
 }
 
+// Verify Filter satisfies the Flow interface.
+var _ streams.Flow = (*Filter)(nil)
+
 // NewFilter returns a new Filter instance.
 // filterFunc is the filter predicate function.
 // parallelism is the flow parallelism factor. In case the events order matters, use parallelism = 1.

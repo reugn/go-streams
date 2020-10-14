@@ -29,6 +29,9 @@ type Throttler struct {
 	counter  uint
 }
 
+// Verify Throttler satisfies the Flow interface.
+var _ streams.Flow = (*Throttler)(nil)
+
 // NewThrottler returns a new Throttler instance.
 // elements is the maximum number of elements to be produced per the given period of time.
 // bufferSize defines the incoming elements buffer size.

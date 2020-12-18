@@ -6,7 +6,7 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/reugn/go-streams"
-	ext "github.com/reugn/go-streams/extension"
+	ext "github.com/reugn/go-streams/extension/pulsar"
 	"github.com/reugn/go-streams/flow"
 )
 

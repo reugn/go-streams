@@ -1,4 +1,4 @@
-package ext
+package kafka
 
 import (
 	"context"

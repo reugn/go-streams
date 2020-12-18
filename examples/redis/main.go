@@ -7,8 +7,9 @@ import (
 
 	"github.com/reugn/go-streams"
 
+	ext "github.com/reugn/go-streams/extension/redis"
+
 	"github.com/go-redis/redis"
-	ext "github.com/reugn/go-streams/extension"
 	"github.com/reugn/go-streams/flow"
 )
 

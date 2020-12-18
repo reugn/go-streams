@@ -1,4 +1,4 @@
-package ext
+package extension
 
 import (
 	"bufio"
@@ -34,12 +34,14 @@ func (fs *FileSource) init() {
 				close(fs.in)
 				break
 			}
+
 			var msg string
 			if isPrefix {
-				msg = string(l[:])
+				msg = string(l)
 			} else {
-				msg = string(l[:]) + ospkg.NewLine
+				msg = string(l) + ospkg.NewLine
 			}
+
 			fs.in <- msg
 		}
 	}()

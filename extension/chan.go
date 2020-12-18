@@ -1,4 +1,4 @@
-package ext
+package extension
 
 import (
 	"github.com/reugn/go-streams"

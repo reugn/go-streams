@@ -11,6 +11,7 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/reugn/go-streams"
 	"github.com/reugn/go-streams/flow"
+	"github.com/reugn/go-streams/internal/util"
 )
 
 // KafkaSource connector
@@ -28,7 +29,7 @@ type KafkaSource struct {
 func NewKafkaSource(ctx context.Context, addrs []string, groupID string,
 	config *sarama.Config, topics ...string) *KafkaSource {
 	consumerGroup, err := sarama.NewConsumerGroup(addrs, groupID, config)
-	streams.Check(err)
+	util.Check(err)
 	out := make(chan interface{})
 	cctx, cancel := context.WithCancel(ctx)
 
@@ -50,7 +51,7 @@ func (ks *KafkaSource) claimLoop() {
 	ks.wg.Add(1)
 	defer func() {
 		ks.wg.Done()
-		log.Printf("Exiting kafka claimLoop")
+		log.Printf("Exiting the Kafka claimLoop")
 	}()
 	for {
 		handler := ks.handler.(*GroupHandler)
@@ -83,7 +84,7 @@ func (ks *KafkaSource) init() {
 	case <-ks.ctx.Done():
 	}
 
-	log.Printf("Closing kafka consumer")
+	log.Printf("Closing the Kafka consumer")
 	ks.wg.Wait()
 	close(ks.out)
 	ks.consumer.Close()
@@ -145,7 +146,7 @@ type KafkaSink struct {
 // NewKafkaSink returns a new KafkaSink instance
 func NewKafkaSink(addrs []string, config *sarama.Config, topic string) *KafkaSink {
 	producer, err := sarama.NewSyncProducer(addrs, config)
-	streams.Check(err)
+	util.Check(err)
 	sink := &KafkaSink{
 		producer,
 		topic,
@@ -178,7 +179,7 @@ func (ks *KafkaSink) init() {
 			log.Printf("Unsupported message type %v", m)
 		}
 	}
-	log.Printf("Closing kafka producer")
+	log.Printf("Closing the Kafka producer")
 	ks.producer.Close()
 }
 

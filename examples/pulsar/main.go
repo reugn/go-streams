@@ -5,9 +5,9 @@ import (
 	"strings"
 
 	"github.com/apache/pulsar-client-go/pulsar"
-	"github.com/reugn/go-streams"
 	ext "github.com/reugn/go-streams/extension/pulsar"
 	"github.com/reugn/go-streams/flow"
+	"github.com/reugn/go-streams/internal/util"
 )
 
 func main() {
@@ -21,10 +21,10 @@ func main() {
 
 	ctx := context.Background()
 	source, err := ext.NewPulsarSource(ctx, &clientOptions, &consumerOptions)
-	streams.Check(err)
+	util.Check(err)
 	flow1 := flow.NewMap(toUpper, 1)
 	sink, err := ext.NewPulsarSink(ctx, &clientOptions, &producerOptions)
-	streams.Check(err)
+	util.Check(err)
 
 	source.Via(flow1).To(sink)
 }

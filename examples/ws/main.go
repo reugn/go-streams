@@ -9,9 +9,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/reugn/go-streams"
 	ext "github.com/reugn/go-streams/extension/ws"
 	"github.com/reugn/go-streams/flow"
+	"github.com/reugn/go-streams/internal/util"
 
 	"github.com/gorilla/websocket"
 )
@@ -122,10 +122,10 @@ func main() {
 
 	url := "ws://127.0.0.1:8080/ws"
 	source, err := ext.NewWebSocketSource(ctx, url)
-	streams.Check(err)
+	util.Check(err)
 	flow1 := flow.NewMap(appendAsterix, 1)
 	sink, err := ext.NewWebSocketSink(ctx, url)
-	streams.Check(err)
+	util.Check(err)
 
 	source.Via(flow1).To(sink)
 

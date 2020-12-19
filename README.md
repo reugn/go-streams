@@ -1,12 +1,12 @@
 # go-streams
 [![Build Status](https://travis-ci.org/reugn/go-streams.svg?branch=master)](https://travis-ci.org/reugn/go-streams)
-[![GoDoc](https://godoc.org/github.com/reugn/go-streams?status.svg)](https://godoc.org/github.com/reugn/go-streams)
+[![PkgGoDev](https://pkg.go.dev/badge/github.com/reugn/go-streams)](https://pkg.go.dev/github.com/reugn/go-streams)
 [![Go Report Card](https://goreportcard.com/badge/github.com/reugn/go-streams)](https://goreportcard.com/report/github.com/reugn/go-streams)
 [![codecov](https://codecov.io/gh/reugn/go-streams/branch/master/graph/badge.svg)](https://codecov.io/gh/reugn/go-streams)
 
 Go stream processing library.  
 Provides simple and concise DSL to build data pipelines.
-![pipeline-architecture-example](./images/pipeline-architecture-example.png)
+![pipeline-architecture-example](./docs/images/pipeline-architecture-example.png)
 > [Wiki](https://en.wikipedia.org/wiki/Pipeline_(computing))  
 > In computing, a pipeline, also known as a data pipeline,[1] is a set of data processing elements connected in series, where the output of one element is the input of the next one. The elements of a pipeline are often executed in parallel or in time-sliced fashion. Some amount of buffer storage is often inserted between elements.
 
@@ -28,7 +28,7 @@ Flow capabilities (flow package):
 * SlidingWindow
 * TumblingWindow
 
-Supported Sources and Sinks (ext package):
+Supported Connectors:
 * Go channels
 * File system
 * Network (TCP, UDP)

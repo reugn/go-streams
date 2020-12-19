@@ -9,3 +9,5 @@ const (
 	// NewLine is a new line constant for a Unix-like os
 	NewLine = "\n"
 )
+
+// TODO create internal folder and move ospkg there and create util folder as well

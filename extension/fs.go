@@ -1,4 +1,4 @@
-package ext
+package extension
 
 import (
 	"bufio"
@@ -6,7 +6,8 @@ import (
 
 	"github.com/reugn/go-streams"
 	"github.com/reugn/go-streams/flow"
-	"github.com/reugn/go-streams/ospkg"
+	"github.com/reugn/go-streams/internal/ospkg"
+	"github.com/reugn/go-streams/internal/util"
 )
 
 // FileSource streams data from the file
@@ -25,7 +26,7 @@ func NewFileSource(fileName string) *FileSource {
 func (fs *FileSource) init() {
 	go func() {
 		file, err := os.Open(fs.fileName)
-		streams.Check(err)
+		util.Check(err)
 		defer file.Close()
 		reader := bufio.NewReader(file)
 		for {
@@ -34,12 +35,14 @@ func (fs *FileSource) init() {
 				close(fs.in)
 				break
 			}
+
 			var msg string
 			if isPrefix {
-				msg = string(l[:])
+				msg = string(l)
 			} else {
-				msg = string(l[:]) + ospkg.NewLine
+				msg = string(l) + ospkg.NewLine
 			}
+
 			fs.in <- msg
 		}
 	}()
@@ -72,11 +75,11 @@ func NewFileSink(fileName string) *FileSink {
 func (fs *FileSink) init() {
 	go func() {
 		file, err := os.OpenFile(fs.fileName, os.O_CREATE|os.O_WRONLY, 0600)
-		streams.Check(err)
+		util.Check(err)
 		defer file.Close()
 		for elem := range fs.in {
 			_, err = file.WriteString(elem.(string))
-			streams.Check(err)
+			util.Check(err)
 		}
 	}()
 }

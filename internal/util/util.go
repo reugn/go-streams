@@ -1,4 +1,4 @@
-package streams
+package util
 
 import (
 	"hash/fnv"
@@ -17,9 +17,10 @@ func NowNano() int64 {
 	return time.Now().UTC().UnixNano()
 }
 
-// HashCode for byte array
+// HashCode for the byte array
 func HashCode(b []byte) uint32 {
 	h := fnv.New32a()
-	h.Write(b)
+	_, err := h.Write(b)
+	Check(err)
 	return h.Sum32()
 }

@@ -1,4 +1,4 @@
-package ext
+package extension
 
 import (
 	"bufio"
@@ -45,7 +45,7 @@ func NewNetSource(ctx context.Context, connType ConnType, address string) (*NetS
 		if err != nil {
 			return nil, err
 		}
-		go acceptConnections(ctx, listener, out)
+		go acceptConnections(listener, out)
 	case UDP:
 		addr, _ := net.ResolveUDPAddr(string(connType), address)
 		conn, err = net.ListenUDP(string(connType), addr)
@@ -54,7 +54,7 @@ func NewNetSource(ctx context.Context, connType ConnType, address string) (*NetS
 		}
 		go handleConnection(conn, out)
 	default:
-		return nil, errors.New("Invalid connection type")
+		return nil, errors.New("invalid connection type")
 	}
 
 	source := &NetSource{
@@ -84,7 +84,7 @@ func (ns *NetSource) listenCtx() {
 }
 
 // TCP Accept routine
-func acceptConnections(ctx context.Context, listener net.Listener, out chan<- interface{}) {
+func acceptConnections(listener net.Listener, out chan<- interface{}) {
 	for {
 		// accept a new connection
 		conn, err := listener.Accept()
@@ -115,7 +115,7 @@ func handleConnection(conn net.Conn, out chan<- interface{}) {
 		}
 	}
 
-	log.Printf("Closing a NetSource connection %v", conn)
+	log.Printf("Closing the NetSource connection %v", conn)
 	conn.Close()
 }
 
@@ -170,11 +170,11 @@ func (ns *NetSink) init() {
 				writer.Flush()
 			}
 		default:
-			log.Printf("Unsupported message type %v", m)
+			log.Printf("NetSink unsupported message type %v", m)
 		}
 	}
 
-	log.Printf("Closing NetSink connection %v", ns.conn)
+	log.Printf("Closing the NetSink connection %v", ns.conn)
 	ns.conn.Close()
 }
 

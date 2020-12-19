@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	ext "github.com/reugn/go-streams/extension/aerospike"
+	"github.com/reugn/go-streams/internal/util"
+
 	aero "github.com/aerospike/aerospike-client-go"
-	"github.com/reugn/go-streams"
-	ext "github.com/reugn/go-streams/extension"
 	"github.com/reugn/go-streams/flow"
 )
 
@@ -31,10 +32,10 @@ func main() {
 
 	cnProperties := &ext.ChangeNotificationProperties{PollingInterval: time.Second * 3}
 	source, err := ext.NewAerospikeSource(ctx, properties, nil, cnProperties)
-	streams.Check(err)
+	util.Check(err)
 	flow1 := flow.NewMap(transform, 1)
 	sink, err := ext.NewAerospikeSink(ctx, properties, nil)
-	streams.Check(err)
+	util.Check(err)
 
 	source.Via(flow1).To(sink)
 }
@@ -42,6 +43,6 @@ func main() {
 var transform = func(in interface{}) interface{} {
 	msg := in.(*aero.Record)
 	fmt.Println(msg.Bins)
-	msg.Bins["ts"] = streams.NowNano()
+	msg.Bins["ts"] = util.NowNano()
 	return ext.AerospikeKeyBins{Key: msg.Key, Bins: msg.Bins}
 }

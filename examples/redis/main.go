@@ -5,10 +5,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reugn/go-streams"
+	ext "github.com/reugn/go-streams/extension/redis"
+	"github.com/reugn/go-streams/internal/util"
 
 	"github.com/go-redis/redis"
-	ext "github.com/reugn/go-streams/extension"
 	"github.com/reugn/go-streams/flow"
 )
 
@@ -32,7 +32,7 @@ func main() {
 	}
 
 	source, err := ext.NewRedisSource(ctx, config, "test")
-	streams.Check(err)
+	util.Check(err)
 	flow1 := flow.NewMap(toUpper, 1)
 	sink := ext.NewRedisSink(config, "test2")
 

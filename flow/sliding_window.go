@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/reugn/go-streams"
+	"github.com/reugn/go-streams/internal/util"
 )
 
 // SlidingWindow assigns elements to windows of fixed length configured by the window size parameter.
@@ -31,16 +32,16 @@ var _ streams.Flow = (*SlidingWindow)(nil)
 // size is the size of the generated windows.
 // slide is the sliding interval of the generated windows.
 func NewSlidingWindow(size time.Duration, slide time.Duration) *SlidingWindow {
-	return NewSlidingWindowWithTsExtractor(size, slide, nil)
+	return NewSlidingWindowWithTSExtractor(size, slide, nil)
 }
 
-// NewSlidingWindowWithTsExtractor returns a new event time based SlidingWindow.
+// NewSlidingWindowWithTSExtractor returns a new event time based SlidingWindow.
 // Event time is the time that each individual event occurred on its producing device.
 // Gives correct results on out-of-order events, late events, or on replays of data.
 // size is the size of the generated windows.
 // slide is the sliding interval of the generated windows.
 // timestampExtractor is the record timestamp (in nanoseconds) extractor.
-func NewSlidingWindowWithTsExtractor(size time.Duration, slide time.Duration,
+func NewSlidingWindowWithTSExtractor(size time.Duration, slide time.Duration,
 	timestampExtractor func(interface{}) int64) *SlidingWindow {
 	window := &SlidingWindow{
 		size:               size,
@@ -89,7 +90,7 @@ func (sw *SlidingWindow) transmit(inlet streams.Inlet) {
 // return the system clock time otherwise
 func (sw *SlidingWindow) timestamp(elem interface{}) int64 {
 	if sw.timestampExtractor == nil {
-		return streams.NowNano()
+		return util.NowNano()
 	}
 	return sw.timestampExtractor(elem)
 }
@@ -113,7 +114,7 @@ func (sw *SlidingWindow) emit() {
 			sw.Lock()
 			// build a window slice and send it to the out chan
 			var windowBottomIndex int
-			now := streams.NowNano()
+			now := util.NowNano()
 			windowUpperIndex := sw.queue.Len()
 			slideUpperIndex := windowUpperIndex
 			slideUpperTime := now - sw.size.Nanoseconds() + sw.slide.Nanoseconds()

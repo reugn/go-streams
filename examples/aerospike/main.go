@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	ext "github.com/reugn/go-streams/extension/aerospike"
-	"github.com/reugn/go-streams/internal/util"
+	ext "github.com/reugn/go-streams/aerospike"
+	"github.com/reugn/go-streams/util"
 
 	aero "github.com/aerospike/aerospike-client-go"
 	"github.com/reugn/go-streams/flow"

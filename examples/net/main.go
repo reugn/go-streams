@@ -8,7 +8,7 @@ import (
 
 	ext "github.com/reugn/go-streams/extension"
 	"github.com/reugn/go-streams/flow"
-	"github.com/reugn/go-streams/internal/util"
+	"github.com/reugn/go-streams/util"
 )
 
 // Test producer: nc -u 127.0.0.1 3434

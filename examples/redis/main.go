@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	ext "github.com/reugn/go-streams/extension/redis"
-	"github.com/reugn/go-streams/internal/util"
+	ext "github.com/reugn/go-streams/redis"
+	"github.com/reugn/go-streams/util"
 
 	"github.com/go-redis/redis"
 	"github.com/reugn/go-streams/flow"

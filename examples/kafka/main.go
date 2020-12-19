@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	ext "github.com/reugn/go-streams/extension/kafka"
+	ext "github.com/reugn/go-streams/kafka"
 
 	"github.com/Shopify/sarama"
 	"github.com/reugn/go-streams/flow"

@@ -6,8 +6,8 @@ import (
 
 	"github.com/reugn/go-streams"
 	"github.com/reugn/go-streams/flow"
-	"github.com/reugn/go-streams/internal/ospkg"
-	"github.com/reugn/go-streams/internal/util"
+	"github.com/reugn/go-streams/util"
+	"github.com/reugn/go-streams/util/ospkg"
 )
 
 // FileSource streams data from the file

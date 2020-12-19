@@ -10,7 +10,7 @@ import (
 
 	ext "github.com/reugn/go-streams/extension"
 	"github.com/reugn/go-streams/flow"
-	"github.com/reugn/go-streams/internal/util"
+	"github.com/reugn/go-streams/util"
 )
 
 var toUpper = func(in interface{}) interface{} {

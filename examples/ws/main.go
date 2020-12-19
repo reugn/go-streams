@@ -9,9 +9,9 @@ import (
 	"syscall"
 	"time"
 
-	ext "github.com/reugn/go-streams/extension/ws"
 	"github.com/reugn/go-streams/flow"
-	"github.com/reugn/go-streams/internal/util"
+	"github.com/reugn/go-streams/util"
+	ext "github.com/reugn/go-streams/ws"
 
 	"github.com/gorilla/websocket"
 )

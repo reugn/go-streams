@@ -32,6 +32,7 @@ Supported Connectors:
 * Go channels
 * File system
 * Network (TCP, UDP)
+* WebSocket
 * [Aerospike](https://www.aerospike.com/)
 * [Apache Kafka](https://kafka.apache.org/)
 * [Apache Pulsar](https://pulsar.apache.org/)

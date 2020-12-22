@@ -13,6 +13,7 @@ require (
 	github.com/reugn/go-streams v0.6.3
 	github.com/reugn/go-streams/aerospike v0.0.0
 	github.com/reugn/go-streams/kafka v0.0.0
+	github.com/reugn/go-streams/nats v0.0.0
 	github.com/reugn/go-streams/pulsar v0.0.0
 	github.com/reugn/go-streams/redis v0.0.0
 	github.com/reugn/go-streams/ws v0.0.0
@@ -22,6 +23,7 @@ replace (
 	github.com/reugn/go-streams => ../
 	github.com/reugn/go-streams/aerospike => ../aerospike
 	github.com/reugn/go-streams/kafka => ../kafka
+	github.com/reugn/go-streams/nats => ../nats
 	github.com/reugn/go-streams/pulsar => ../pulsar
 	github.com/reugn/go-streams/redis => ../redis
 	github.com/reugn/go-streams/ws => ../ws

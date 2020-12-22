@@ -55,16 +55,16 @@ func (ns *NatsSource) init() {
 
 	// Bind all topic subscribers
 	for _, topic := range ns.topics {
-		go func() {
+		go func(t string) {
 			ns.wg.Add(1)
 			defer ns.wg.Done()
-			sub, err := ns.conn.Subscribe(topic, func(msg *stan.Msg) {
+			sub, err := ns.conn.Subscribe(t, func(msg *stan.Msg) {
 				ns.out <- msg
 			}, ns.subscriptionType)
 			util.Check(err)
-			log.Println(fmt.Sprintf("nats source subscribed to topic %s", topic))
+			log.Println(fmt.Sprintf("nats source subscribed to topic %s", t))
 			ns.subscriptions = append(ns.subscriptions, sub)
-		}()
+		}(topic)
 	}
 
 	// Wait for an interrupt to unsubscribe topics

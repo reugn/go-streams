@@ -8,7 +8,6 @@ require (
 	github.com/apache/pulsar-client-go v0.3.0
 	github.com/go-redis/redis v6.15.9+incompatible
 	github.com/gorilla/websocket v1.4.2
-	github.com/nats-io/nats-streaming-server v0.19.0 // indirect
 	github.com/nats-io/stan.go v0.7.0
 	github.com/reugn/go-streams v0.6.3
 	github.com/reugn/go-streams/aerospike v0.0.0

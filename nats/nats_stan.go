@@ -9,7 +9,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/nats-io/stan.go"
+	stan "github.com/nats-io/stan.go"
 	"github.com/reugn/go-streams"
 	"github.com/reugn/go-streams/flow"
 	"github.com/reugn/go-streams/util"
@@ -62,7 +62,7 @@ func (ns *NatsSource) init() {
 				ns.out <- msg
 			}, ns.subscriptionType)
 			util.Check(err)
-			log.Println(fmt.Sprintf("nats source subscribed to topic %s", t))
+			log.Println(fmt.Sprintf("NATS source subscribed to topic %s", t))
 			ns.subscriptions = append(ns.subscriptions, sub)
 		}(topic)
 	}
@@ -72,7 +72,7 @@ func (ns *NatsSource) init() {
 
 	select {
 	case <-sigchan:
-		log.Println("nats source received termination signal, cleaning up...")
+		log.Println("NATS source received termination signal, cleaning up...")
 		ns.cancelCtx()
 	case <-ns.ctx.Done():
 	}
@@ -81,7 +81,7 @@ func (ns *NatsSource) init() {
 
 	close(ns.out)
 	ns.conn.Close()
-	log.Println("nats source cleanup complete")
+	log.Println("NATS source cleanup complete")
 }
 
 func (ns *NatsSource) awaitCleanup() {
@@ -143,11 +143,11 @@ func (ns *NatsSink) init() {
 			err := ns.conn.Publish(ns.topic, m)
 			util.Check(err)
 		default:
-			log.Printf("Unsupported nats message publish type: %v", m)
+			log.Printf("Unsupported NATS message publish type: %v", m)
 		}
 	}
 
-	log.Printf("closing nats sink connection")
+	log.Printf("Closing the NATS sink connection")
 
 	ns.conn.Close()
 }

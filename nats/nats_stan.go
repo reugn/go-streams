@@ -17,8 +17,9 @@ import (
 
 // NatsSource connector
 type NatsSource struct {
-	conn          stan.Conn
-	subscriptions []stan.Subscription
+	conn             stan.Conn
+	subscriptions    []stan.Subscription
+	subscriptionType stan.SubscriptionOption
 
 	topics    []string
 	out       chan interface{}
@@ -28,13 +29,14 @@ type NatsSource struct {
 }
 
 // NewNatsSource returns a new NatsSource instance
-func NewNatsSource(ctx context.Context, conn stan.Conn, topics ...string) *NatsSource {
+func NewNatsSource(ctx context.Context, conn stan.Conn, subscriptionType stan.SubscriptionOption, topics ...string) *NatsSource {
 	cctx, cancel := context.WithCancel(ctx)
 	out := make(chan interface{})
 
 	src := NatsSource{
 		conn,
 		[]stan.Subscription{},
+		subscriptionType,
 		topics,
 		out,
 		cctx,
@@ -58,7 +60,7 @@ func (ns *NatsSource) init() {
 			defer ns.wg.Done()
 			sub, err := ns.conn.Subscribe(topic, func(msg *stan.Msg) {
 				ns.out <- msg
-			})
+			}, ns.subscriptionType)
 			util.Check(err)
 			log.Println(fmt.Sprintf("nats source subscribed to topic %s", topic))
 			ns.subscriptions = append(ns.subscriptions, sub)
@@ -144,7 +146,9 @@ func (ns *NatsSink) init() {
 			log.Printf("Unsupported nats message publish type: %v", m)
 		}
 	}
-	log.Printf("Closing nats sink connection")
+
+	log.Printf("closing nats sink connection")
+
 	ns.conn.Close()
 }
 

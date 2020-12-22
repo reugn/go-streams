@@ -26,7 +26,9 @@ func main() {
 	log.Println("Connected to nats streaming server")
 
 	ctx := context.Background()
-	source := ext.NewNatsSource(ctx, subConn, "input-topic")
+	// This example uses the StartWithLastReceived subscription option
+	// there are more available at https://docs.nats.io/developing-with-nats-streaming/receiving
+	source := ext.NewNatsSource(ctx, subConn, stan.StartWithLastReceived(), "input-topic")
 	flow1 := flow.NewMap(toUpper, 1)
 	flow2 := flow.NewFlatMap(appendAsterix, 1)
 

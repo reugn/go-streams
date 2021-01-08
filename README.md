@@ -4,11 +4,11 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/reugn/go-streams)](https://goreportcard.com/report/github.com/reugn/go-streams)
 [![codecov](https://codecov.io/gh/reugn/go-streams/branch/master/graph/badge.svg)](https://codecov.io/gh/reugn/go-streams)
 
-Go stream processing library.  
-Provides simple and concise DSL to build data pipelines.
+A lightweight stream processing library for Go.  
+`go-streams` provides a simple and concise DSL to build data pipelines.
 ![pipeline-architecture-example](./docs/images/pipeline-architecture-example.png)
 > [Wiki](https://en.wikipedia.org/wiki/Pipeline_(computing))  
-> In computing, a pipeline, also known as a data pipeline,[1] is a set of data processing elements connected in series, where the output of one element is the input of the next one. The elements of a pipeline are often executed in parallel or in time-sliced fashion. Some amount of buffer storage is often inserted between elements.
+> In computing, a pipeline, also known as a data pipeline, is a set of data processing elements connected in series, where the output of one element is the input of the next one. The elements of a pipeline are often executed in parallel or in time-sliced fashion. Some amount of buffer storage is often inserted between elements.
 
 ## Overview
 Building blocks:
@@ -16,7 +16,7 @@ Building blocks:
 * Flow - A Flow is a set of stream processing steps that has one open input and one open output. 
 * Sink - A Sink is a set of stream processing steps that has one open input. Can be used as a Subscriber.
 
-Flow capabilities (flow package):  
+Flow capabilities ([flow](https://github.com/reugn/go-streams/tree/master/flow) package):  
 * Map
 * FlatMap
 * Filter
@@ -39,7 +39,7 @@ Supported Connectors:
 * [Redis](https://redis.io/)
 
 ## Examples
-Could be found in the examples directory.
+Usage samples are available in the examples directory.
 
 ## License
 Licensed under the MIT License.

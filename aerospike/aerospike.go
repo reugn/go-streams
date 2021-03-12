@@ -2,7 +2,7 @@ package aerospike
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto/sha256"
 	"encoding/json"
 	"log"
 	"os"
@@ -201,12 +201,12 @@ func (as *AerospikeSink) init() {
 				log.Printf("Aerospike client.Put failed with: %s", err)
 			}
 		case aero.BinMap:
-			// use the md5 hash of a BinMap as a Key
+			// use the sha256 checksum of the BinMap as a Key
 			jsonStr, err := json.Marshal(m)
 			if err == nil {
 				key, err := aero.NewKey(as.properties.Namespase,
 					as.properties.SetName,
-					md5.Sum([]byte(jsonStr)))
+					sha256.Sum256([]byte(jsonStr)))
 				if err == nil {
 					as.client.Put(as.writePolicy, key, m)
 				}

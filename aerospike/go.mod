@@ -3,7 +3,7 @@ module github.com/reugn/go-streams/aerospike
 go 1.15
 
 require (
-	github.com/aerospike/aerospike-client-go v4.0.0+incompatible
+	github.com/aerospike/aerospike-client-go v4.5.2+incompatible
 	github.com/onsi/ginkgo v1.14.2 // indirect
 	github.com/onsi/gomega v1.10.4 // indirect
 	github.com/reugn/go-streams v0.6.3

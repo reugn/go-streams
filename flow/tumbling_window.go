@@ -76,9 +76,11 @@ func (tw *TumblingWindow) receive() {
 
 // generate and emit a window
 func (tw *TumblingWindow) emit() {
+	ticker := time.NewTicker(tw.size)
+	defer ticker.Stop()
 	for {
 		select {
-		case <-time.After(tw.size):
+		case <-ticker.C:
 			tw.Lock()
 			windowSlice := append(tw.buffer[:0:0], tw.buffer...)
 			tw.buffer = nil

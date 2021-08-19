@@ -108,9 +108,11 @@ func (sw *SlidingWindow) receive() {
 
 // emit is triggered by the sliding interval
 func (sw *SlidingWindow) emit() {
+	ticker := time.NewTicker(sw.slide)
+	defer ticker.Stop()
 	for {
 		select {
-		case <-time.After(sw.slide):
+		case <-ticker.C:
 			sw.Lock()
 			// build a window slice and send it to the out chan
 			var windowBottomIndex int

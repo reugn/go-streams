@@ -64,9 +64,11 @@ func (th *Throttler) quotaHit() bool {
 
 // the scheduled elements counter refresher.
 func (th *Throttler) resetCounterLoop(after time.Duration) {
+	ticker := time.NewTicker(after)
+	defer ticker.Stop()
 	for {
 		select {
-		case <-time.After(after):
+		case <-ticker.C:
 			th.Lock()
 			if th.quotaHit() {
 				th.doNotify()

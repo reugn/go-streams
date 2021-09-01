@@ -59,6 +59,23 @@ func FanOut(outlet streams.Outlet, magnitude int) []streams.Flow {
 	return out
 }
 
+// RoundRobin creates a balanced number of flows from the single outlet.
+// This can be useful when work can be parallelized across mulitple cores.
+func RoundRobin(outlet streams.Outlet, magnitude int) []streams.Flow {
+	out := make([]streams.Flow, magnitude)
+	for i := 0; i < magnitude; i++ {
+		out[i] = NewPassThrough()
+		go func(o streams.Flow) {
+			defer close(o.In())
+			for elem := range outlet.Out() {
+				o.In() <- elem
+			}
+		}(out[i])
+	}
+
+	return out
+}
+
 // Merge merges multiple flows into a single flow.
 func Merge(outlets ...streams.Flow) streams.Flow {
 	merged := NewPassThrough()

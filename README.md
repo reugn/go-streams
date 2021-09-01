@@ -23,6 +23,7 @@ Flow capabilities ([flow](https://github.com/reugn/go-streams/tree/master/flow) 
 * PassThrough
 * Split
 * FanOut
+* RoundRobin
 * Merge
 * Throttler
 * SlidingWindow

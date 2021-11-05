@@ -10,12 +10,12 @@ import (
 	"syscall"
 	"time"
 
-	aero "github.com/aerospike/aerospike-client-go"
+	aero "github.com/aerospike/aerospike-client-go/v5"
 	"github.com/reugn/go-streams"
 	"github.com/reugn/go-streams/flow"
 )
 
-// AerospikeProperties is the Aerospike connector configuration properties
+// AerospikeProperties represents the Aerospike connector configuration properties.
 type AerospikeProperties struct {
 	Policy    *aero.ClientPolicy
 	Hostname  string
@@ -24,12 +24,12 @@ type AerospikeProperties struct {
 	SetName   string
 }
 
-// ChangeNotificationProperties holds the changes polling configuration
+// ChangeNotificationProperties holds the Aerospike cluster events polling configuration.
 type ChangeNotificationProperties struct {
 	PollingInterval time.Duration
 }
 
-// AerospikeSource connector
+// AerospikeSource represents an Aerospike source connector.
 type AerospikeSource struct {
 	client                       *aero.Client
 	records                      chan *aero.Result
@@ -40,8 +40,8 @@ type AerospikeSource struct {
 	changeNotificationProperties *ChangeNotificationProperties
 }
 
-// NewAerospikeSource returns a new AerospikeSource instance
-// set changeNotificationProperties to nil to scan the entire namespace/set
+// NewAerospikeSource returns a new AerospikeSource instance.
+// Set changeNotificationProperties to nil to scan the entire namespace/set.
 func NewAerospikeSource(ctx context.Context,
 	properties *AerospikeProperties,
 	scanPolicy *aero.ScanPolicy,
@@ -152,14 +152,14 @@ func (as *AerospikeSource) Out() <-chan interface{} {
 	return as.out
 }
 
-// AerospikeKeyBins is an Aerospike Key and BinMap container
-// use it to stream records to the AerospikeSink
+// AerospikeKeyBins is an Aerospike Key and BinMap container.
+// Use it to stream records to the AerospikeSink.
 type AerospikeKeyBins struct {
 	Key  *aero.Key
 	Bins aero.BinMap
 }
 
-// AerospikeSink connector
+// AerospikeSink represents an Aerospike sink connector.
 type AerospikeSink struct {
 	client      *aero.Client
 	in          chan interface{}
@@ -168,7 +168,7 @@ type AerospikeSink struct {
 	writePolicy *aero.WritePolicy
 }
 
-// NewAerospikeSink returns a new AerospikeSink instance
+// NewAerospikeSink returns a new AerospikeSink instance.
 func NewAerospikeSink(ctx context.Context,
 	properties *AerospikeProperties, writePolicy *aero.WritePolicy) (*AerospikeSink, error) {
 	client, err := aero.NewClientWithPolicy(properties.Policy, properties.Hostname, properties.Port)

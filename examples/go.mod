@@ -4,7 +4,7 @@ go 1.15
 
 require (
 	github.com/Shopify/sarama v1.29.1
-	github.com/aerospike/aerospike-client-go v4.5.2+incompatible
+	github.com/aerospike/aerospike-client-go/v5 v5.6.0
 	github.com/apache/pulsar-client-go v0.5.0
 	github.com/go-redis/redis v6.15.9+incompatible
 	github.com/gorilla/websocket v1.4.2

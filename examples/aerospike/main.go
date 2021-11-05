@@ -8,7 +8,7 @@ import (
 	ext "github.com/reugn/go-streams/aerospike"
 	"github.com/reugn/go-streams/util"
 
-	aero "github.com/aerospike/aerospike-client-go"
+	aero "github.com/aerospike/aerospike-client-go/v5"
 	"github.com/reugn/go-streams/flow"
 )
 

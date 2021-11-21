@@ -11,27 +11,29 @@ import (
 // Tumbling windows have a fixed size and do not overlap.
 type TumblingWindow struct {
 	sync.Mutex
-	size   time.Duration
-	in     chan interface{}
-	out    chan interface{}
-	done   chan struct{}
-	buffer []interface{}
+	windowSize time.Duration
+	in         chan interface{}
+	out        chan interface{}
+	done       chan struct{}
+	buffer     []interface{}
 }
 
 // Verify TumblingWindow satisfies the Flow interface.
 var _ streams.Flow = (*TumblingWindow)(nil)
 
 // NewTumblingWindow returns a new TumblingWindow instance.
-// size is the size of the generated windows.
+//
+// size is the Duration of generated windows.
 func NewTumblingWindow(size time.Duration) *TumblingWindow {
 	window := &TumblingWindow{
-		size: size,
-		in:   make(chan interface{}),
-		out:  make(chan interface{}), // windows channel
-		done: make(chan struct{}),
+		windowSize: size,
+		in:         make(chan interface{}),
+		out:        make(chan interface{}),
+		done:       make(chan struct{}),
 	}
 	go window.receive()
 	go window.emit()
+
 	return window
 }
 
@@ -74,18 +76,20 @@ func (tw *TumblingWindow) receive() {
 	close(tw.out)
 }
 
-// generate and emit a window
+// emit generates and emits a new window.
 func (tw *TumblingWindow) emit() {
-	ticker := time.NewTicker(tw.size)
+	ticker := time.NewTicker(tw.windowSize)
 	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ticker.C:
 			tw.Lock()
-			windowSlice := append(tw.buffer[:0:0], tw.buffer...)
+			windowSlice := tw.buffer
 			tw.buffer = nil
 			tw.Unlock()
-			// send window slice to the out chan
+
+			// send the window slice to the out chan
 			if len(windowSlice) > 0 {
 				tw.out <- windowSlice
 			}

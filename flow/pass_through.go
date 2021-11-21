@@ -4,7 +4,7 @@ import (
 	"github.com/reugn/go-streams"
 )
 
-// PassThrough produces the received element as is.
+// PassThrough retransmits incoming elements as is.
 //
 // in  -- 1 -- 2 ---- 3 -- 4 ------ 5 --
 //        |    |      |    |        |
@@ -20,10 +20,11 @@ var _ streams.Flow = (*PassThrough)(nil)
 // NewPassThrough returns a new PassThrough instance.
 func NewPassThrough() *PassThrough {
 	passThrough := &PassThrough{
-		make(chan interface{}),
-		make(chan interface{}),
+		in:  make(chan interface{}),
+		out: make(chan interface{}),
 	}
 	go passThrough.doStream()
+
 	return passThrough
 }
 

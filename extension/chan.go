@@ -5,7 +5,7 @@ import (
 	"github.com/reugn/go-streams/flow"
 )
 
-// ChanSource streams data from the input channel
+// ChanSource represents an inbound connector that streams items from a channel.
 type ChanSource struct {
 	in chan interface{}
 }
@@ -26,7 +26,7 @@ func (cs *ChanSource) Out() <-chan interface{} {
 	return cs.in
 }
 
-// ChanSink sends data to the output channel
+// ChanSink represents an outbound connector that streams items to a channel.
 type ChanSink struct {
 	Out chan interface{}
 }

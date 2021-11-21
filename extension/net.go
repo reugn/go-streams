@@ -12,17 +12,18 @@ import (
 	"github.com/reugn/go-streams/flow"
 )
 
-// ConnType connection type
+// ConnType represents a connection type.
 type ConnType string
 
 const (
 	// TCP connection type
 	TCP ConnType = "tcp"
+
 	// UDP connection type
 	UDP ConnType = "udp"
 )
 
-// NetSource network socket connector
+// NetSource represents an inbound network socket connector.
 type NetSource struct {
 	ctx      context.Context
 	conn     net.Conn
@@ -31,7 +32,7 @@ type NetSource struct {
 	out      chan interface{}
 }
 
-// NewNetSource returns a new NetSource instance
+// NewNetSource returns a new instance of NetSource.
 func NewNetSource(ctx context.Context, connType ConnType, address string) (*NetSource, error) {
 	var err error
 	var conn net.Conn
@@ -70,20 +71,20 @@ func NewNetSource(ctx context.Context, connType ConnType, address string) (*NetS
 }
 
 func (ns *NetSource) listenCtx() {
-	select {
-	case <-ns.ctx.Done():
-		if ns.conn != nil {
-			ns.conn.Close()
-		}
-		if ns.listener != nil {
-			ns.listener.Close()
-		}
+	<-ns.ctx.Done()
 
-		close(ns.out)
+	if ns.conn != nil {
+		ns.conn.Close()
 	}
+
+	if ns.listener != nil {
+		ns.listener.Close()
+	}
+
+	close(ns.out)
 }
 
-// TCP Accept routine
+// acceptConnections accepts new TCP connections.
 func acceptConnections(listener net.Listener, out chan<- interface{}) {
 	for {
 		// accept a new connection
@@ -98,7 +99,7 @@ func acceptConnections(listener net.Listener, out chan<- interface{}) {
 	}
 }
 
-// a handleConnection routine
+// handleConnection handles new connections.
 func handleConnection(conn net.Conn, out chan<- interface{}) {
 	log.Printf("NetSource connected on: %v", conn.LocalAddr())
 	reader := bufio.NewReader(conn)
@@ -130,14 +131,14 @@ func (ns *NetSource) Out() <-chan interface{} {
 	return ns.out
 }
 
-// NetSink downstreams input events to a network soket
+// NetSink represents an outbound network socket connector.
 type NetSink struct {
 	conn     net.Conn
 	connType ConnType
 	in       chan interface{}
 }
 
-// NewNetSink returns a new NetSink instance
+// NewNetSink returns a new instance of NetSink.
 func NewNetSink(connType ConnType, address string) (*NetSink, error) {
 	var err error
 	var conn net.Conn

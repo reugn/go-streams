@@ -5,10 +5,10 @@ go 1.15
 require (
 	github.com/Shopify/sarama v1.29.1
 	github.com/aerospike/aerospike-client-go/v5 v5.6.0
-	github.com/apache/pulsar-client-go v0.5.0
+	github.com/apache/pulsar-client-go v0.7.0
 	github.com/go-redis/redis v6.15.9+incompatible
 	github.com/gorilla/websocket v1.4.2
-	github.com/nats-io/stan.go v0.9.0
+	github.com/nats-io/stan.go v0.10.2
 	github.com/reugn/go-streams v0.6.3
 	github.com/reugn/go-streams/aerospike v0.0.0
 	github.com/reugn/go-streams/kafka v0.0.0

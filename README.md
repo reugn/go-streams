@@ -1,5 +1,5 @@
 # go-streams
-[![Build Status](https://travis-ci.org/reugn/go-streams.svg?branch=master)](https://travis-ci.org/reugn/go-streams)
+[![Build](https://github.com/reugn/go-streams/actions/workflows/build.yml/badge.svg)](https://github.com/reugn/go-streams/actions/workflows/build.yml)
 [![PkgGoDev](https://pkg.go.dev/badge/github.com/reugn/go-streams)](https://pkg.go.dev/github.com/reugn/go-streams)
 [![Go Report Card](https://goreportcard.com/badge/github.com/reugn/go-streams)](https://goreportcard.com/report/github.com/reugn/go-streams)
 [![codecov](https://codecov.io/gh/reugn/go-streams/branch/master/graph/badge.svg)](https://codecov.io/gh/reugn/go-streams)
@@ -27,6 +27,7 @@ Flow capabilities ([flow](https://github.com/reugn/go-streams/tree/master/flow) 
 * Throttler
 * SlidingWindow
 * TumblingWindow
+* SessionWindow
 
 Supported Connectors:
 * Go channels
@@ -36,6 +37,7 @@ Supported Connectors:
 * [Aerospike](https://www.aerospike.com/)
 * [Apache Kafka](https://kafka.apache.org/)
 * [Apache Pulsar](https://pulsar.apache.org/)
+* [NATS](https://nats.io/) Streaming
 * [Redis](https://redis.io/)
 
 ## Examples

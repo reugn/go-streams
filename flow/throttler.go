@@ -112,6 +112,7 @@ func (th *Throttler) bufferize() {
 	}
 	close(th.done)
 	close(th.out)
+	close(th.notify)
 }
 
 // Via streams data through the given flow

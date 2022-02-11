@@ -98,8 +98,8 @@ github.com/prometheus/common v0.0.0-20181126121408-4724e9255275/go.mod h1:daVV7q
 github.com/prometheus/procfs v0.0.0-20181204211112-1dc9a6cbc91a/go.mod h1:c3At6R/oaqEKCNdg8wHV1ftS6bRYblBhIjjI8uT2IGk=
 github.com/prometheus/procfs v0.2.0 h1:wH4vA7pcjKuZzjF7lM8awk4fnuJO6idemZXoKnULUx4=
 github.com/prometheus/procfs v0.2.0/go.mod h1:lV6e/gmhEcM9IjHGsFOCxxuZ+z1YqCvr4OA4YeYWdaU=
-github.com/reugn/go-streams v0.6.3 h1:b+RqXgcKyOKxU5aX1ddIXCia1UBGeNpO/+yzo0CBVuE=
-github.com/reugn/go-streams v0.6.3/go.mod h1:OsEa/+BuietQY5sJUCm5nrZujfWtuKIv7KQVCZCXYGg=
+github.com/reugn/go-streams v0.7.0 h1:z5CaC4SIDd/zCt/K/jP6IG3k1+/p87Ela2GuBLnr7kw=
+github.com/reugn/go-streams v0.7.0/go.mod h1:OsEa/+BuietQY5sJUCm5nrZujfWtuKIv7KQVCZCXYGg=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.2.2/go.mod h1:a8OnRcib4nhh0OaRAV+Yts87kKdq0PP7pXfy6kDkUVs=
 github.com/stretchr/testify v1.3.0 h1:TivCn/peBQ7UY8ooIcPgZFpTNSz0Q2U6UrFlUfqbe0Q=

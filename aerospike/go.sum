@@ -37,8 +37,8 @@ github.com/onsi/gomega v1.10.1/go.mod h1:iN09h71vgCQne3DLsj+A5owkum+a2tYe+TOCB1y
 github.com/onsi/gomega v1.15.0 h1:WjP/FQ/sk43MRmnEcT+MlDw2TFvkrXlprrPST/IudjU=
 github.com/onsi/gomega v1.15.0/go.mod h1:cIuvLEne0aoVhAgh/O6ac0Op8WWw9H6eYCriF+tEHG0=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/reugn/go-streams v0.6.3 h1:b+RqXgcKyOKxU5aX1ddIXCia1UBGeNpO/+yzo0CBVuE=
-github.com/reugn/go-streams v0.6.3/go.mod h1:OsEa/+BuietQY5sJUCm5nrZujfWtuKIv7KQVCZCXYGg=
+github.com/reugn/go-streams v0.7.0 h1:z5CaC4SIDd/zCt/K/jP6IG3k1+/p87Ela2GuBLnr7kw=
+github.com/reugn/go-streams v0.7.0/go.mod h1:OsEa/+BuietQY5sJUCm5nrZujfWtuKIv7KQVCZCXYGg=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.5.1/go.mod h1:5W2xD1RspED5o8YsWQXVCued0rvSQ+mT+I5cxcmMvtA=
 github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=

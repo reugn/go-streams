@@ -13,8 +13,9 @@ import (
 	"github.com/reugn/go-streams/flow"
 )
 
-// NatsSource represents a NATS Streaming source connector.
-type NatsSource struct {
+// StreamingSource represents a NATS Streaming source connector.
+// Deprecated: Use JetStreamSource instead.
+type StreamingSource struct {
 	conn             stan.Conn
 	subscriptions    []stan.Subscription
 	subscriptionType stan.SubscriptionOption
@@ -26,12 +27,12 @@ type NatsSource struct {
 	wg        *sync.WaitGroup
 }
 
-// NewNatsSource returns a new NatsSource instance.
-func NewNatsSource(ctx context.Context, conn stan.Conn, subscriptionType stan.SubscriptionOption,
-	topics ...string) *NatsSource {
+// NewStreamingSource returns a new StreamingSource instance.
+func NewStreamingSource(ctx context.Context, conn stan.Conn, subscriptionType stan.SubscriptionOption,
+	topics ...string) *StreamingSource {
 	cctx, cancel := context.WithCancel(ctx)
 
-	natsSource := NatsSource{
+	streamingSource := &StreamingSource{
 		conn:             conn,
 		subscriptions:    []stan.Subscription{},
 		subscriptionType: subscriptionType,
@@ -42,11 +43,11 @@ func NewNatsSource(ctx context.Context, conn stan.Conn, subscriptionType stan.Su
 		wg:               &sync.WaitGroup{},
 	}
 
-	go natsSource.init()
-	return &natsSource
+	go streamingSource.init()
+	return streamingSource
 }
 
-func (ns *NatsSource) init() {
+func (ns *StreamingSource) init() {
 	sigchan := make(chan os.Signal, 1)
 	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
 
@@ -62,7 +63,7 @@ func (ns *NatsSource) init() {
 				log.Fatal("Failed to subscribe to NATS cluster")
 			}
 
-			log.Printf("NATS source subscribed to topic %s", t)
+			log.Printf("StreamingSource subscribed to topic %s", t)
 			ns.subscriptions = append(ns.subscriptions, sub)
 		}(topic)
 	}
@@ -72,7 +73,7 @@ func (ns *NatsSource) init() {
 
 	select {
 	case <-sigchan:
-		log.Println("NATS source received termination signal, cleaning up...")
+		log.Println("StreamingSource received termination signal, cleaning up...")
 		ns.cancelCtx()
 	case <-ns.ctx.Done():
 	}
@@ -81,16 +82,16 @@ func (ns *NatsSource) init() {
 
 	close(ns.out)
 	ns.conn.Close()
-	log.Println("NATS source cleanup complete")
+	log.Println("StreamingSource cleanup complete")
 }
 
-func (ns *NatsSource) awaitCleanup() {
+func (ns *StreamingSource) awaitCleanup() {
 	ns.wg.Add(1)
 	defer ns.wg.Done()
 
 	select {
 	case <-ns.ctx.Done():
-		for _, s := range ns.subscriptions {
+		for _, sub := range ns.subscriptions {
 			ns.wg.Add(1)
 			go func(sub stan.Subscription) {
 				defer ns.wg.Done()
@@ -98,43 +99,44 @@ func (ns *NatsSource) awaitCleanup() {
 				if err := sub.Unsubscribe(); err != nil {
 					log.Fatal("Failed to remove NATS subscription")
 				}
-			}(s)
+			}(sub)
 		}
 	default:
 	}
 }
 
 // Via streams data through a given flow
-func (ns *NatsSource) Via(_flow streams.Flow) streams.Flow {
+func (ns *StreamingSource) Via(_flow streams.Flow) streams.Flow {
 	flow.DoStream(ns, _flow)
 	return _flow
 }
 
 // Out returns the output channel for the data
-func (ns *NatsSource) Out() <-chan interface{} {
+func (ns *StreamingSource) Out() <-chan interface{} {
 	return ns.out
 }
 
-// NatsSink represents a NATS Streaming sink connector.
-type NatsSink struct {
+// StreamingSink represents a NATS Streaming sink connector.
+// Deprecated: Use JetStreamSink instead.
+type StreamingSink struct {
 	conn  stan.Conn
 	topic string
 	in    chan interface{}
 }
 
-// NewNatsSink returns a new NatsSink instance
-func NewNatsSink(conn stan.Conn, topic string) *NatsSink {
-	natsSink := NatsSink{
+// NewStreamingSink returns a new StreamingSink instance.
+func NewStreamingSink(conn stan.Conn, topic string) *StreamingSink {
+	streamingSink := &StreamingSink{
 		conn:  conn,
 		topic: topic,
 		in:    make(chan interface{}),
 	}
 
-	go natsSink.init()
-	return &natsSink
+	go streamingSink.init()
+	return streamingSink
 }
 
-func (ns *NatsSink) init() {
+func (ns *StreamingSink) init() {
 	for msg := range ns.in {
 		var err error
 		switch m := msg.(type) {
@@ -158,6 +160,6 @@ func (ns *NatsSink) init() {
 }
 
 // In returns an input channel for receiving data
-func (ns *NatsSink) In() chan<- interface{} {
+func (ns *StreamingSink) In() chan<- interface{} {
 	return ns.in
 }

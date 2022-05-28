@@ -37,7 +37,7 @@ Supported Connectors:
 * [Aerospike](https://www.aerospike.com/)
 * [Apache Kafka](https://kafka.apache.org/)
 * [Apache Pulsar](https://pulsar.apache.org/)
-* [NATS](https://nats.io/) Streaming
+* [NATS](https://nats.io/)
 * [Redis](https://redis.io/)
 
 ## Examples

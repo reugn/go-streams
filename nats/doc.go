@@ -1,2 +1,2 @@
-// Package nats implements the NATS Streaming connector.
+// Package nats provides NATS streaming connectors.
 package nats

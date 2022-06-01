@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
+	"log"
 	"strings"
 
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/reugn/go-streams/flow"
 	ext "github.com/reugn/go-streams/pulsar"
-	"github.com/reugn/go-streams/util"
 )
 
 func main() {
@@ -21,12 +21,18 @@ func main() {
 
 	ctx := context.Background()
 	source, err := ext.NewPulsarSource(ctx, &clientOptions, &consumerOptions)
-	util.Check(err)
+	if err != nil {
+		log.Fatal(err)
+	}
 	flow1 := flow.NewMap(toUpper, 1)
 	sink, err := ext.NewPulsarSink(ctx, &clientOptions, &producerOptions)
-	util.Check(err)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	source.Via(flow1).To(sink)
+	source.
+		Via(flow1).
+		To(sink)
 }
 
 var toUpper = func(in interface{}) interface{} {

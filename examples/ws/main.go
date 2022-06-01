@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/reugn/go-streams/flow"
-	"github.com/reugn/go-streams/util"
 	ext "github.com/reugn/go-streams/ws"
 
 	"github.com/gorilla/websocket"
@@ -44,13 +43,11 @@ func (server *wsServer) init() {
 	// send initial message
 	timer := time.NewTimer(time.Second)
 	go func() {
-		select {
-		case <-timer.C:
-			payload := []byte("foo")
-			server.broadcast <- ext.Message{
-				MsgType: websocket.TextMessage,
-				Payload: payload,
-			}
+		<-timer.C
+		payload := []byte("foo")
+		server.broadcast <- ext.Message{
+			MsgType: websocket.TextMessage,
+			Payload: payload,
 		}
 	}()
 
@@ -109,11 +106,9 @@ func main() {
 
 	timer := time.NewTimer(time.Second * 10)
 	go func() {
-		select {
-		case <-timer.C:
-			log.Print("ctx")
-			cancelFunc()
-		}
+		<-timer.C
+		log.Print("ctx")
+		cancelFunc()
 	}()
 
 	go term()
@@ -122,12 +117,18 @@ func main() {
 
 	url := "ws://127.0.0.1:8080/ws"
 	source, err := ext.NewWebSocketSource(ctx, url)
-	util.Check(err)
+	if err != nil {
+		log.Fatal(err)
+	}
 	flow1 := flow.NewMap(appendAsterix, 1)
 	sink, err := ext.NewWebSocketSink(ctx, url)
-	util.Check(err)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	source.Via(flow1).To(sink)
+	source.
+		Via(flow1).
+		To(sink)
 
 	log.Print("Exiting...")
 }

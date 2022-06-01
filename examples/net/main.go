@@ -2,13 +2,12 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"log"
 	"strings"
 	"time"
 
 	ext "github.com/reugn/go-streams/extension"
 	"github.com/reugn/go-streams/flow"
-	"github.com/reugn/go-streams/util"
 )
 
 // Test producer: nc -u 127.0.0.1 3434
@@ -18,23 +17,27 @@ func main() {
 
 	timer := time.NewTimer(time.Minute)
 	go func() {
-		select {
-		case <-timer.C:
-			cancelFunc()
-		}
+		<-timer.C
+		cancelFunc()
 	}()
 
 	source, err := ext.NewNetSource(ctx, ext.UDP, "127.0.0.1:3434")
-	util.Check(err)
+	if err != nil {
+		log.Fatal(err)
+	}
 	flow1 := flow.NewMap(toUpper, 1)
 	sink, err := ext.NewNetSink(ext.UDP, "127.0.0.1:3535")
-	util.Check(err)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	source.Via(flow1).To(sink)
+	source.
+		Via(flow1).
+		To(sink)
 }
 
 var toUpper = func(in interface{}) interface{} {
 	msg := in.(string)
-	fmt.Printf("Got: %s", msg)
+	log.Printf("Got: %s", msg)
 	return strings.ToUpper(msg)
 }

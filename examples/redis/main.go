@@ -2,27 +2,25 @@ package main
 
 import (
 	"context"
+	"log"
 	"strings"
 	"time"
 
 	ext "github.com/reugn/go-streams/redis"
-	"github.com/reugn/go-streams/util"
 
 	"github.com/go-redis/redis"
 	"github.com/reugn/go-streams/flow"
 )
 
-//docker exec -it pubsub bash
-//https://redis.io/topics/pubsub
+// docker exec -it pubsub bash
+// https://redis.io/topics/pubsub
 func main() {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 
 	timer := time.NewTimer(time.Minute)
 	go func() {
-		select {
-		case <-timer.C:
-			cancelFunc()
-		}
+		<-timer.C
+		cancelFunc()
 	}()
 
 	config := &redis.Options{
@@ -32,11 +30,15 @@ func main() {
 	}
 
 	source, err := ext.NewRedisSource(ctx, config, "test")
-	util.Check(err)
+	if err != nil {
+		log.Fatal(err)
+	}
 	flow1 := flow.NewMap(toUpper, 1)
 	sink := ext.NewRedisSink(config, "test2")
 
-	source.Via(flow1).To(sink)
+	source.
+		Via(flow1).
+		To(sink)
 }
 
 var toUpper = func(in interface{}) interface{} {

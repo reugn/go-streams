@@ -5,7 +5,6 @@ run:
 linters:
   disable-all: true
   enable:
-    - deadcode
     - dupl
     - errcheck
     - exportloopref
@@ -23,13 +22,11 @@ linters:
     - prealloc
     - revive
     - staticcheck
-    - structcheck
     - stylecheck
     - typecheck
     - unconvert
     - unparam
     - unused
-    - varcheck
 
 issues:
   exclude-rules:

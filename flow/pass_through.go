@@ -7,7 +7,7 @@ import (
 // PassThrough retransmits incoming elements as is.
 //
 // in  -- 1 -- 2 ---- 3 -- 4 ------ 5 --
-//        |    |      |    |        |
+//
 // out -- 1 -- 2 ---- 3 -- 4 ------ 5 --
 type PassThrough struct {
 	in  chan interface{}

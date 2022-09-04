@@ -12,9 +12,9 @@ type FilterPredicate func(interface{}) bool
 // If not, the element is discarded.
 //
 // in  -- 1 -- 2 ---- 3 -- 4 ------ 5 --
-//        |    |      |    |        |
-//    [-------- FilterPredicate --------]
-//        |    |                    |
+//
+// [ -------- FilterPredicate -------- ]
+//
 // out -- 1 -- 2 ------------------ 5 --
 type Filter struct {
 	filterPredicate FilterPredicate

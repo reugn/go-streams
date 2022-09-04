@@ -10,9 +10,9 @@ type MapFunction func(interface{}) interface{}
 // Map takes one element and produces one element.
 //
 // in  -- 1 -- 2 ---- 3 -- 4 ------ 5 --
-//        |    |      |    |        |
-//    [--------- MapFunction -----------]
-//        |    |      |    |        |
+//
+// [ ---------- MapFunction ---------- ]
+//
 // out -- 1' - 2' --- 3' - 4' ----- 5' -
 type Map struct {
 	mapFunction MapFunction

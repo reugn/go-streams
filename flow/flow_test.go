@@ -108,13 +108,13 @@ func TestFlowUtil(t *testing.T) {
 			fanOut := flow.FanOut(source.Via(filter).Via(flow1), 2)
 			flow.Merge(fanOut...).To(sink)
 		}()
-    
+
 		var _output []string
 		for e := range sink.Out {
 			_output = append(_output, e.(string))
 		}
 		sort.Strings(_output)
-    
+
 		assertEqual(t, _expectedOutput, _output)
 	})
 	t.Run("RoundRobin", func(t *testing.T) {
@@ -135,13 +135,13 @@ func TestFlowUtil(t *testing.T) {
 			fanOut := flow.RoundRobin(source.Via(filter).Via(flow1), 2)
 			flow.Merge(fanOut...).To(sink)
 		}()
-    
+
 		var _output []string
 		for e := range sink.Out {
 			_output = append(_output, e.(string))
 		}
 		sort.Strings(_output)
-    
+
 		assertEqual(t, _expectedOutput, _output)
 	})
 }

@@ -60,7 +60,7 @@ func FanOut(outlet streams.Outlet, magnitude int) []streams.Flow {
 }
 
 // RoundRobin creates a balanced number of flows from the single outlet.
-// This can be useful when work can be parallelized across mulitple cores.
+// This can be useful when work can be parallelized across multiple cores.
 func RoundRobin(outlet streams.Outlet, magnitude int) []streams.Flow {
 	out := make([]streams.Flow, magnitude)
 	for i := 0; i < magnitude; i++ {

@@ -10,10 +10,10 @@ type FlatMapFunction func(interface{}) []interface{}
 // FlatMap takes one element and produces zero, one, or more elements.
 //
 // in  -- 1 -- 2 ---- 3 -- 4 ------ 5 --
-//        |    |      |    |        |
-//    [-------- FlatMapFunction --------]
-//        |    |           |   |    |
-// out -- 1' - 2' -------- 4'- 4''- 5' -
+//
+// [ -------- FlatMapFunction -------- ]
+//
+// out -- 1' - 2' -------- 4'- 4" - 5' -
 type FlatMap struct {
 	flatMapFunction FlatMapFunction
 	in              chan interface{}

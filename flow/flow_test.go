@@ -90,31 +90,60 @@ func TestFlow(t *testing.T) {
 }
 
 func TestFlowUtil(t *testing.T) {
-	in := make(chan interface{})
-	out := make(chan interface{})
+	t.Run("FanOut", func(t *testing.T) {
+		in := make(chan interface{})
+		out := make(chan interface{})
 
-	source := ext.NewChanSource(in)
-	flow1 := flow.NewMap(toUpper, 1)
-	filter := flow.NewFilter(filterA, 1)
-	sink := ext.NewChanSink(out)
+		source := ext.NewChanSource(in)
+		flow1 := flow.NewMap(toUpper, 1)
+		filter := flow.NewFilter(filterA, 1)
+		sink := ext.NewChanSink(out)
 
-	var _input = []string{"a", "b", "c"}
-	var _expectedOutput = []string{"B", "B", "C", "C"}
+		var _input = []string{"a", "b", "c"}
+		var _expectedOutput = []string{"B", "B", "C", "C"}
 
-	go ingest(_input, in)
-	go deferClose(in, time.Second)
-	go func() {
-		fanOut := flow.FanOut(source.Via(filter).Via(flow1), 2)
-		flow.Merge(fanOut...).To(sink)
-	}()
+		go ingest(_input, in)
+		go deferClose(in, time.Second)
+		go func() {
+			fanOut := flow.FanOut(source.Via(filter).Via(flow1), 2)
+			flow.Merge(fanOut...).To(sink)
+		}()
+    
+		var _output []string
+		for e := range sink.Out {
+			_output = append(_output, e.(string))
+		}
+		sort.Strings(_output)
+    
+		assertEqual(t, _expectedOutput, _output)
+	})
+	t.Run("RoundRobin", func(t *testing.T) {
+		in := make(chan interface{})
+		out := make(chan interface{})
 
-	var _output []string
-	for e := range sink.Out {
-		_output = append(_output, e.(string))
-	}
-	sort.Strings(_output)
+		source := ext.NewChanSource(in)
+		flow1 := flow.NewMap(toUpper, 1)
+		filter := flow.NewFilter(filterA, 1)
+		sink := ext.NewChanSink(out)
 
-	assertEqual(t, _expectedOutput, _output)
+		var _input = []string{"a", "b", "c"}
+		var _expectedOutput = []string{"B", "C"}
+
+		go ingest(_input, in)
+		go deferClose(in, time.Second)
+		go func() {
+			fanOut := flow.RoundRobin(source.Via(filter).Via(flow1), 2)
+			flow.Merge(fanOut...).To(sink)
+		}()
+    
+		var _output []string
+		for e := range sink.Out {
+			_output = append(_output, e.(string))
+		}
+		sort.Strings(_output)
+    
+		assertEqual(t, _expectedOutput, _output)
+	})
 }
 
 func TestSessionWindow(t *testing.T) {

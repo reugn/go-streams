@@ -4,39 +4,41 @@ import (
 	"github.com/reugn/go-streams"
 )
 
-// FilterFunc is a filter predicate function.
-type FilterFunc func(interface{}) bool
+// FilterPredicate represents a filter predicate (boolean-valued function).
+type FilterPredicate func(interface{}) bool
 
-// Filter filters the incoming elements using a predicate.
-// If the predicate returns true the element is passed downstream,
-// if it returns false the element is discarded.
+// Filter filters incoming elements using a filter predicate.
+// If an element matches the predicate, the element is passed downstream.
+// If not, the element is discarded.
 //
 // in  -- 1 -- 2 ---- 3 -- 4 ------ 5 --
 //        |    |      |    |        |
-//    [---------- FilterFunc -----------]
+//    [-------- FilterPredicate --------]
 //        |    |                    |
 // out -- 1 -- 2 ------------------ 5 --
 type Filter struct {
-	FilterF     FilterFunc
-	in          chan interface{}
-	out         chan interface{}
-	parallelism uint
+	filterPredicate FilterPredicate
+	in              chan interface{}
+	out             chan interface{}
+	parallelism     uint
 }
 
 // Verify Filter satisfies the Flow interface.
 var _ streams.Flow = (*Filter)(nil)
 
 // NewFilter returns a new Filter instance.
-// filterFunc is the filter predicate function.
+//
+// filterPredicate is the boolean-valued filter function.
 // parallelism is the flow parallelism factor. In case the events order matters, use parallelism = 1.
-func NewFilter(filterFunc FilterFunc, parallelism uint) *Filter {
+func NewFilter(filterPredicate FilterPredicate, parallelism uint) *Filter {
 	filter := &Filter{
-		filterFunc,
-		make(chan interface{}),
-		make(chan interface{}),
-		parallelism,
+		filterPredicate: filterPredicate,
+		in:              make(chan interface{}),
+		out:             make(chan interface{}),
+		parallelism:     parallelism,
 	}
 	go filter.doStream()
+
 	return filter
 }
 
@@ -68,14 +70,14 @@ func (f *Filter) transmit(inlet streams.Inlet) {
 	close(inlet.In())
 }
 
-// throws items that are not satisfying the filter function
+// doStream discards items that don't match the filter predicate.
 func (f *Filter) doStream() {
 	sem := make(chan struct{}, f.parallelism)
 	for elem := range f.in {
 		sem <- struct{}{}
 		go func(e interface{}) {
 			defer func() { <-sem }()
-			if f.FilterF(e) {
+			if f.filterPredicate(e) {
 				f.out <- e
 			}
 		}(elem)

@@ -10,12 +10,12 @@ import (
 	"syscall"
 	"time"
 
-	aero "github.com/aerospike/aerospike-client-go"
+	aero "github.com/aerospike/aerospike-client-go/v5"
 	"github.com/reugn/go-streams"
 	"github.com/reugn/go-streams/flow"
 )
 
-// AerospikeProperties is the Aerospike connector configuration properties
+// AerospikeProperties represents configuration properties for an Aerospike connector.
 type AerospikeProperties struct {
 	Policy    *aero.ClientPolicy
 	Hostname  string
@@ -24,15 +24,15 @@ type AerospikeProperties struct {
 	SetName   string
 }
 
-// ChangeNotificationProperties holds the changes polling configuration
+// ChangeNotificationProperties contains the configuration for polling Aerospike cluster events.
 type ChangeNotificationProperties struct {
 	PollingInterval time.Duration
 }
 
-// AerospikeSource connector
+// AerospikeSource represents an Aerospike source connector.
 type AerospikeSource struct {
 	client                       *aero.Client
-	records                      chan *aero.Result
+	recordsChannel               chan *aero.Result
 	scanPolicy                   *aero.ScanPolicy
 	out                          chan interface{}
 	ctx                          context.Context
@@ -40,8 +40,8 @@ type AerospikeSource struct {
 	changeNotificationProperties *ChangeNotificationProperties
 }
 
-// NewAerospikeSource returns a new AerospikeSource instance
-// set changeNotificationProperties to nil to scan the entire namespace/set
+// NewAerospikeSource returns a new AerospikeSource instance.
+// Set changeNotificationProperties to nil to scan the entire namespace/set.
 func NewAerospikeSource(ctx context.Context,
 	properties *AerospikeProperties,
 	scanPolicy *aero.ScanPolicy,
@@ -59,7 +59,7 @@ func NewAerospikeSource(ctx context.Context,
 	records := make(chan *aero.Result)
 	source := &AerospikeSource{
 		client:                       client,
-		records:                      records,
+		recordsChannel:               records,
 		scanPolicy:                   scanPolicy,
 		out:                          make(chan interface{}),
 		ctx:                          ctx,
@@ -76,7 +76,7 @@ func (as *AerospikeSource) poll() {
 	if as.changeNotificationProperties == nil {
 		// scan the entire namespace/set
 		as.doScan()
-		close(as.records)
+		close(as.recordsChannel)
 		return
 	}
 
@@ -87,6 +87,7 @@ loop:
 		select {
 		case <-as.ctx.Done():
 			break loop
+
 		case t := <-ticker.C:
 			ts := t.UnixNano() - as.changeNotificationProperties.PollingInterval.Nanoseconds()
 			as.scanPolicy.PredExp = []aero.PredExp{
@@ -104,10 +105,10 @@ loop:
 func (as *AerospikeSource) doScan() {
 	recordSet, err := as.client.ScanAll(as.scanPolicy, as.properties.Namespase, as.properties.SetName)
 	if err != nil {
-		log.Printf("Aerospike client.ScanAll failed with: %v", err)
+		log.Printf("Aerospike client.ScanAll failed with: %s", err)
 	} else {
 		for result := range recordSet.Results() {
-			as.records <- result
+			as.recordsChannel <- result
 		}
 	}
 }
@@ -122,16 +123,18 @@ loop:
 		select {
 		case <-sigchan:
 			break loop
+
 		case <-as.ctx.Done():
 			break loop
-		case result, ok := <-as.records:
+
+		case result, ok := <-as.recordsChannel:
 			if !ok {
 				break loop
 			}
 			if result.Err == nil {
 				as.out <- result.Record
 			} else {
-				log.Printf("Scan record error %s", result.Err)
+				log.Printf("Aerospike scan record error %s", result.Err)
 			}
 		}
 	}
@@ -152,14 +155,14 @@ func (as *AerospikeSource) Out() <-chan interface{} {
 	return as.out
 }
 
-// AerospikeKeyBins is an Aerospike Key and BinMap container
-// use it to stream records to the AerospikeSink
+// AerospikeKeyBins represents an Aerospike Key and BinMap container.
+// Use it to stream records to an AerospikeSink.
 type AerospikeKeyBins struct {
 	Key  *aero.Key
 	Bins aero.BinMap
 }
 
-// AerospikeSink connector
+// AerospikeSink represents an Aerospike sink connector.
 type AerospikeSink struct {
 	client      *aero.Client
 	in          chan interface{}
@@ -168,7 +171,7 @@ type AerospikeSink struct {
 	writePolicy *aero.WritePolicy
 }
 
-// NewAerospikeSink returns a new AerospikeSink instance
+// NewAerospikeSink returns a new AerospikeSink instance.
 func NewAerospikeSink(ctx context.Context,
 	properties *AerospikeProperties, writePolicy *aero.WritePolicy) (*AerospikeSink, error) {
 	client, err := aero.NewClientWithPolicy(properties.Policy, properties.Hostname, properties.Port)
@@ -200,21 +203,24 @@ func (as *AerospikeSink) init() {
 			if err := as.client.Put(as.writePolicy, m.Key, m.Bins); err != nil {
 				log.Printf("Aerospike client.Put failed with: %s", err)
 			}
+
 		case aero.BinMap:
-			// use the sha256 checksum of the BinMap as a Key
 			jsonStr, err := json.Marshal(m)
 			if err == nil {
-				key, err := aero.NewKey(as.properties.Namespase,
+				var key *aero.Key
+				// use BinMap sha256 checksum as record key
+				key, err = aero.NewKey(as.properties.Namespase,
 					as.properties.SetName,
-					sha256.Sum256([]byte(jsonStr)))
+					sha256.Sum256(jsonStr))
 				if err == nil {
-					as.client.Put(as.writePolicy, key, m)
+					err = as.client.Put(as.writePolicy, key, m)
 				}
 			}
 
 			if err != nil {
-				log.Printf("Error on processing Aerospike message: %s", err)
+				log.Printf("Error processing Aerospike message: %s", err)
 			}
+
 		default:
 			log.Printf("Unsupported message type %v", m)
 		}

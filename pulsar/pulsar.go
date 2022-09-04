@@ -12,7 +12,7 @@ import (
 	"github.com/reugn/go-streams/flow"
 )
 
-// PulsarSource connector
+// PulsarSource represents an Apache Pulsar source connector.
 type PulsarSource struct {
 	client   pulsar.Client
 	consumer pulsar.Consumer
@@ -20,7 +20,7 @@ type PulsarSource struct {
 	ctx      context.Context
 }
 
-// NewPulsarSource returns a new PulsarSource instance
+// NewPulsarSource returns a new PulsarSource instance.
 func NewPulsarSource(ctx context.Context, clientOptions *pulsar.ClientOptions,
 	consumerOptions *pulsar.ConsumerOptions) (*PulsarSource, error) {
 	client, err := pulsar.NewClient(*clientOptions)
@@ -54,8 +54,10 @@ loop:
 		select {
 		case <-sigchan:
 			break loop
+
 		case <-ps.ctx.Done():
 			break loop
+
 		default:
 			msg, err := ps.consumer.Receive(ps.ctx)
 			if err == nil {
@@ -66,7 +68,7 @@ loop:
 		}
 	}
 
-	log.Printf("Closing pulsar consumer")
+	log.Printf("Closing Pulsar consumer")
 	close(ps.out)
 	ps.consumer.Close()
 	ps.client.Close()
@@ -83,7 +85,7 @@ func (ps *PulsarSource) Out() <-chan interface{} {
 	return ps.out
 }
 
-// PulsarSink connector
+// PulsarSink represents an Apache Pulsar sink connector.
 type PulsarSink struct {
 	client   pulsar.Client
 	producer pulsar.Producer
@@ -91,7 +93,7 @@ type PulsarSink struct {
 	ctx      context.Context
 }
 
-// NewPulsarSink returns a new PulsarSink instance
+// NewPulsarSink returns a new PulsarSink instance.
 func NewPulsarSink(ctx context.Context, clientOptions *pulsar.ClientOptions,
 	producerOptions *pulsar.ProducerOptions) (*PulsarSink, error) {
 	client, err := pulsar.NewClient(*clientOptions)
@@ -118,20 +120,28 @@ func NewPulsarSink(ctx context.Context, clientOptions *pulsar.ClientOptions,
 // init starts the main loop
 func (ps *PulsarSink) init() {
 	for msg := range ps.in {
+		var err error
 		switch m := msg.(type) {
 		case pulsar.Message:
-			ps.producer.Send(ps.ctx, &pulsar.ProducerMessage{
+			_, err = ps.producer.Send(ps.ctx, &pulsar.ProducerMessage{
 				Payload: m.Payload(),
 			})
+
 		case string:
-			ps.producer.Send(ps.ctx, &pulsar.ProducerMessage{
+			_, err = ps.producer.Send(ps.ctx, &pulsar.ProducerMessage{
 				Payload: []byte(m),
 			})
+
 		default:
 			log.Printf("Unsupported message type %v", m)
 		}
+
+		if err != nil {
+			log.Printf("Error processing Pulsar message: %s", err)
+		}
 	}
-	log.Printf("Closing pulsar producer")
+
+	log.Printf("Closing Pulsar producer")
 	ps.producer.Close()
 	ps.client.Close()
 }

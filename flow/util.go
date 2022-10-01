@@ -82,3 +82,27 @@ func Merge(outlets ...streams.Flow) streams.Flow {
 
 	return merged
 }
+
+// KeyBy create KeyedFlow
+// Use keySelector to generate KeyedData
+func KeyBy(
+	outlet streams.Outlet,
+	keySelector func(interface{}) interface{},
+	parallelism uint,
+) *streams.KeyedFlow {
+	r := streams.KeyedFlow{}
+	r.Ch = make(chan streams.KeyedData, parallelism)
+
+	go func() {
+		for e := range outlet.Out() {
+			// generate KeyedData
+			r.Ch <- streams.KeyedData{
+				Key:  keySelector(e),
+				Data: e,
+			}
+		}
+		close(r.Ch)
+	}()
+
+	return &r
+}

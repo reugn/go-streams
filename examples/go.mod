@@ -19,6 +19,7 @@ require (
 )
 
 replace (
+	github.com/reugn/go-streams => ../
 	github.com/reugn/go-streams/aerospike => ../aerospike
 	github.com/reugn/go-streams/kafka => ../kafka
 	github.com/reugn/go-streams/nats => ../nats

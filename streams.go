@@ -3,6 +3,7 @@ package streams
 import (
 	"sync"
 )
+
 // Inlet represents a type that exposes one open input.
 type Inlet interface {
 	In() chan<- interface{}

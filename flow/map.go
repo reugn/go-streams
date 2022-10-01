@@ -4,18 +4,18 @@ import (
 	"github.com/reugn/go-streams"
 )
 
-// MapFunc is a Map transformation function.
-type MapFunc func(interface{}) interface{}
+// MapFunction represents a Map transformation function.
+type MapFunction func(interface{}) interface{}
 
 // Map takes one element and produces one element.
 //
 // in  -- 1 -- 2 ---- 3 -- 4 ------ 5 --
-//        |    |      |    |        |
-//    [----------- MapFunc -------------]
-//        |    |      |    |        |
+//
+// [ ---------- MapFunction ---------- ]
+//
 // out -- 1' - 2' --- 3' - 4' ----- 5' -
 type Map struct {
-	MapF        MapFunc
+	mapFunction MapFunction
 	in          chan interface{}
 	out         chan interface{}
 	parallelism uint
@@ -25,14 +25,15 @@ type Map struct {
 var _ streams.Flow = (*Map)(nil)
 
 // NewMap returns a new Map instance.
-// mapFunc is the Map transformation function.
+//
+// mapFunction is the Map transformation function.
 // parallelism is the flow parallelism factor. In case the events order matters, use parallelism = 1.
-func NewMap(mapFunc MapFunc, parallelism uint) *Map {
+func NewMap(mapFunction MapFunction, parallelism uint) *Map {
 	_map := &Map{
-		mapFunc,
-		make(chan interface{}),
-		make(chan interface{}),
-		parallelism,
+		mapFunction: mapFunction,
+		in:          make(chan interface{}),
+		out:         make(chan interface{}),
+		parallelism: parallelism,
 	}
 	go _map.doStream()
 	return _map
@@ -72,7 +73,7 @@ func (m *Map) doStream() {
 		sem <- struct{}{}
 		go func(e interface{}) {
 			defer func() { <-sem }()
-			trans := m.MapF(e)
+			trans := m.mapFunction(e)
 			m.out <- trans
 		}(elem)
 	}

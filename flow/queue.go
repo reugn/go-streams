@@ -2,7 +2,7 @@ package flow
 
 import "container/heap"
 
-// Item is the PriorityQueue item.
+// Item represents a PriorityQueue item.
 type Item struct {
 	Msg   interface{}
 	epoch int64 // item priority, backed by the epoch time.
@@ -14,7 +14,7 @@ func NewItem(msg interface{}, epoch int64, index int) *Item {
 	return &Item{msg, epoch, index}
 }
 
-// PriorityQueue implements the heap.Interface.
+// PriorityQueue implements heap.Interface.
 type PriorityQueue []*Item
 
 // Len returns the PriorityQueue length.
@@ -25,15 +25,15 @@ func (pq PriorityQueue) Less(i, j int) bool {
 	return pq[i].epoch < pq[j].epoch
 }
 
-// Swap exchanges the indexes of the items.
+// Swap exchanges indexes of the items.
 func (pq PriorityQueue) Swap(i, j int) {
 	pq[i], pq[j] = pq[j], pq[i]
 	pq[i].index = i
 	pq[j].index = j
 }
 
-// Push implements the heap.Interface.Push.
-// Appends the item to the PriorityQueue.
+// Push implements heap.Interface.Push.
+// Appends an item to the PriorityQueue.
 func (pq *PriorityQueue) Push(x interface{}) {
 	n := len(*pq)
 	item := x.(*Item)
@@ -41,7 +41,7 @@ func (pq *PriorityQueue) Push(x interface{}) {
 	*pq = append(*pq, item)
 }
 
-// Pop implements the heap.Interface.Pop.
+// Pop implements heap.Interface.Pop.
 // Removes and returns the Len() - 1 element.
 func (pq *PriorityQueue) Pop() interface{} {
 	old := *pq
@@ -57,13 +57,13 @@ func (pq *PriorityQueue) Head() *Item {
 	return (*pq)[0]
 }
 
-// Update sets the item's priority and calls the heap.Fix to re-establish the heap ordering.
+// Update sets item priority and calls heap.Fix to re-establish the heap ordering.
 func (pq *PriorityQueue) Update(item *Item, newEpoch int64) {
 	item.epoch = newEpoch
 	heap.Fix(pq, item.index)
 }
 
-// Slice returns the sliced PriorityQueue using the given bounds.
+// Slice returns a sliced PriorityQueue using the given bounds.
 func (pq PriorityQueue) Slice(start, end int) PriorityQueue {
 	return pq[start:end]
 }

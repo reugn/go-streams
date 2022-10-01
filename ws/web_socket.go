@@ -12,31 +12,32 @@ import (
 	"github.com/reugn/go-streams/flow"
 )
 
-// Message represents a message from peer
+// Message represents a WebSocket message container.
+// Message types are defined in RFC 6455, section 11.8.
 type Message struct {
-	// The message types are defined in RFC 6455, section 11.8.
 	MsgType int
 	Payload []byte
 }
 
-// WebSocketSource connector
+// WebSocketSource represents a WebSocket source connector.
 type WebSocketSource struct {
 	ctx        context.Context
 	connection *websocket.Conn
 	out        chan interface{}
 }
 
-// NewWebSocketSource returns a new WebSocketSource instance
+// NewWebSocketSource creates and returns a new WebSocketSource using the default dialer.
 func NewWebSocketSource(ctx context.Context, url string) (*WebSocketSource, error) {
 	return NewWebSocketSourceWithDialer(ctx, url, websocket.DefaultDialer)
 }
 
-// NewWebSocketSourceWithDialer returns a new WebSocketSource instance
+// NewWebSocketSourceWithDialer returns a new WebSocketSource instance.
 func NewWebSocketSourceWithDialer(ctx context.Context, url string, dialer *websocket.Dialer) (*WebSocketSource, error) {
 	conn, _, err := dialer.Dial(url, nil)
 	if err != nil {
 		return nil, err
 	}
+
 	source := &WebSocketSource{
 		ctx:        ctx,
 		connection: conn,
@@ -57,18 +58,21 @@ loop:
 		select {
 		case <-sigchan:
 			break loop
+
 		case <-wsock.ctx.Done():
 			break loop
+
 		default:
 			t, msg, err := wsock.connection.ReadMessage()
 			if err != nil {
-				log.Printf("Error on ws ReadMessage: %v", err)
+				log.Printf("Error reading WebSocket message: %s", err)
 			} else {
 				wsock.out <- Message{
 					MsgType: t,
 					Payload: msg,
 				}
-				// exit on CloseMessage
+
+				// exit loop on CloseMessage
 				if t == websocket.CloseMessage {
 					break loop
 				}
@@ -76,7 +80,7 @@ loop:
 		}
 	}
 
-	log.Print("Closing the WebSocketSource connection")
+	log.Print("Closing WebSocketSource connection")
 	close(wsock.out)
 	wsock.connection.Close()
 }
@@ -92,19 +96,19 @@ func (wsock *WebSocketSource) Out() <-chan interface{} {
 	return wsock.out
 }
 
-// WebSocketSink connector
+// WebSocketSink represents a WebSocket sink connector.
 type WebSocketSink struct {
 	ctx        context.Context
 	connection *websocket.Conn
 	in         chan interface{}
 }
 
-// NewWebSocketSink returns a new WebSocketSink instance
+// NewWebSocketSink creates and returns a new WebSocketSink using the default dialer.
 func NewWebSocketSink(ctx context.Context, url string) (*WebSocketSink, error) {
 	return NewWebSocketSinkWithDialer(ctx, url, websocket.DefaultDialer)
 }
 
-// NewWebSocketSinkWithDialer returns a new WebSocketSink instance
+// NewWebSocketSinkWithDialer returns a new WebSocketSink instance.
 func NewWebSocketSinkWithDialer(ctx context.Context, url string, dialer *websocket.Dialer) (*WebSocketSink, error) {
 	conn, _, err := dialer.Dial(url, nil)
 	if err != nil {
@@ -128,18 +132,23 @@ func (wsock *WebSocketSink) init() {
 		switch m := msg.(type) {
 		case Message:
 			err = wsock.connection.WriteMessage(m.MsgType, m.Payload)
+
 		case string:
 			err = wsock.connection.WriteMessage(websocket.TextMessage, []byte(m))
+
 		case []byte:
 			err = wsock.connection.WriteMessage(websocket.BinaryMessage, m)
+
 		default:
 			log.Printf("WebSocketSink Unsupported message type %v", m)
 		}
+
 		if err != nil {
-			log.Printf("Error on ws WriteMessage: %v", err)
+			log.Printf("Error processing WebSocket message: %s", err)
 		}
 	}
-	log.Print("Closing the WebSocketSink connection")
+
+	log.Print("Closing WebSocketSink connection")
 	wsock.connection.Close()
 }
 

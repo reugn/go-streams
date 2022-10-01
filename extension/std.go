@@ -2,15 +2,19 @@ package extension
 
 import "fmt"
 
-// StdoutSink sends items to stdout
+// StdoutSink represents a simple outbound connector that sends incoming
+// items to standard output.
 type StdoutSink struct {
 	in chan interface{}
 }
 
-// NewStdoutSink returns a new StdoutSink instance
+// NewStdoutSink returns a new StdoutSink instance.
 func NewStdoutSink() *StdoutSink {
-	sink := &StdoutSink{make(chan interface{})}
+	sink := &StdoutSink{
+		in: make(chan interface{}),
+	}
 	sink.init()
+
 	return sink
 }
 
@@ -27,22 +31,26 @@ func (stdout *StdoutSink) In() chan<- interface{} {
 	return stdout.in
 }
 
-// IgnoreSink sends items to /dev/null
+// IgnoreSink represents a simple outbound connector that discards
+// all of the incoming items.
 type IgnoreSink struct {
 	in chan interface{}
 }
 
-// NewIgnoreSink returns a new IgnoreSink instance
+// NewIgnoreSink returns a new IgnoreSink instance.
 func NewIgnoreSink() *IgnoreSink {
-	sink := &IgnoreSink{make(chan interface{})}
+	sink := &IgnoreSink{
+		in: make(chan interface{}),
+	}
 	sink.init()
+
 	return sink
 }
 
 func (ignore *IgnoreSink) init() {
 	go func() {
 		for {
-			_, ok := (<-ignore.in)
+			_, ok := <-ignore.in
 			if !ok {
 				break
 			}

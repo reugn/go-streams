@@ -4,37 +4,39 @@ import (
 	"github.com/reugn/go-streams"
 )
 
-// FlatMapFunc is a FlatMap transformation function.
-type FlatMapFunc func(interface{}) []interface{}
+// FlatMapFunction represents a FlatMap transformation function.
+type FlatMapFunction func(interface{}) []interface{}
 
 // FlatMap takes one element and produces zero, one, or more elements.
 //
 // in  -- 1 -- 2 ---- 3 -- 4 ------ 5 --
-//        |    |      |    |        |
-//    [---------- FlatMapFunc ----------]
-//        |    |           |   |    |
-// out -- 1' - 2' -------- 4'- 4''- 5' -
+//
+// [ -------- FlatMapFunction -------- ]
+//
+// out -- 1' - 2' -------- 4'- 4" - 5' -
 type FlatMap struct {
-	FlatMapF    FlatMapFunc
-	in          chan interface{}
-	out         chan interface{}
-	parallelism uint
+	flatMapFunction FlatMapFunction
+	in              chan interface{}
+	out             chan interface{}
+	parallelism     uint
 }
 
 // Verify FlatMap satisfies the Flow interface.
 var _ streams.Flow = (*FlatMap)(nil)
 
 // NewFlatMap returns a new FlatMap instance.
-// flatMapFunc is the FlatMap transformation function.
+//
+// flatMapFunction is the FlatMap transformation function.
 // parallelism is the flow parallelism factor. In case the events order matters, use parallelism = 1.
-func NewFlatMap(flatMapFunc FlatMapFunc, parallelism uint) *FlatMap {
+func NewFlatMap(flatMapFunction FlatMapFunction, parallelism uint) *FlatMap {
 	flatMap := &FlatMap{
-		flatMapFunc,
-		make(chan interface{}),
-		make(chan interface{}),
-		parallelism,
+		flatMapFunction: flatMapFunction,
+		in:              make(chan interface{}),
+		out:             make(chan interface{}),
+		parallelism:     parallelism,
 	}
 	go flatMap.doStream()
+
 	return flatMap
 }
 
@@ -72,7 +74,7 @@ func (fm *FlatMap) doStream() {
 		sem <- struct{}{}
 		go func(e interface{}) {
 			defer func() { <-sem }()
-			trans := fm.FlatMapF(e)
+			trans := fm.flatMapFunction(e)
 			for _, item := range trans {
 				fm.out <- item
 			}

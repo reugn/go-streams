@@ -15,8 +15,8 @@ import (
 // In this case elements are assigned to multiple windows.
 type SlidingWindow struct {
 	sync.Mutex
-	size               time.Duration
-	slide              time.Duration
+	windowSize         time.Duration
+	slidingInterval    time.Duration
 	queue              *PriorityQueue
 	in                 chan interface{}
 	out                chan interface{}
@@ -29,8 +29,9 @@ var _ streams.Flow = (*SlidingWindow)(nil)
 
 // NewSlidingWindow returns a new processing time based SlidingWindow.
 // Processing time refers to the system time of the machine that is executing the respective operation.
-// size is the size of the generated windows.
-// slide is the sliding interval of the generated windows.
+//
+// size is the Duration of generated windows.
+// slide is the sliding interval of generated windows.
 func NewSlidingWindow(size time.Duration, slide time.Duration) *SlidingWindow {
 	return NewSlidingWindowWithTSExtractor(size, slide, nil)
 }
@@ -38,22 +39,24 @@ func NewSlidingWindow(size time.Duration, slide time.Duration) *SlidingWindow {
 // NewSlidingWindowWithTSExtractor returns a new event time based SlidingWindow.
 // Event time is the time that each individual event occurred on its producing device.
 // Gives correct results on out-of-order events, late events, or on replays of data.
-// size is the size of the generated windows.
-// slide is the sliding interval of the generated windows.
+//
+// size is the Duration of generated windows.
+// slide is the sliding interval of generated windows.
 // timestampExtractor is the record timestamp (in nanoseconds) extractor.
 func NewSlidingWindowWithTSExtractor(size time.Duration, slide time.Duration,
 	timestampExtractor func(interface{}) int64) *SlidingWindow {
 	window := &SlidingWindow{
-		size:               size,
-		slide:              slide,
+		windowSize:         size,
+		slidingInterval:    slide,
 		queue:              &PriorityQueue{},
 		in:                 make(chan interface{}),
-		out:                make(chan interface{}), // windows channel
+		out:                make(chan interface{}),
 		done:               make(chan struct{}),
 		timestampExtractor: timestampExtractor,
 	}
 	go window.receive()
 	go window.emit()
+
 	return window
 }
 
@@ -78,7 +81,7 @@ func (sw *SlidingWindow) In() chan<- interface{} {
 	return sw.in
 }
 
-// submit emitted windows to the next Inlet
+// transmit submits newly created windows to the next Inlet.
 func (sw *SlidingWindow) transmit(inlet streams.Inlet) {
 	for elem := range sw.Out() {
 		inlet.In() <- elem
@@ -86,8 +89,8 @@ func (sw *SlidingWindow) transmit(inlet streams.Inlet) {
 	close(inlet.In())
 }
 
-// extract timestamp from the record if the timestampExtractor is set
-// return the system clock time otherwise
+// timestamp extracts the timestamp from a record if the timestampExtractor is set.
+// Returns system clock time otherwise.
 func (sw *SlidingWindow) timestamp(elem interface{}) int64 {
 	if sw.timestampExtractor == nil {
 		return util.NowNano()
@@ -108,8 +111,9 @@ func (sw *SlidingWindow) receive() {
 
 // emit is triggered by the sliding interval
 func (sw *SlidingWindow) emit() {
-	ticker := time.NewTicker(sw.slide)
+	ticker := time.NewTicker(sw.slidingInterval)
 	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ticker.C:
@@ -119,8 +123,8 @@ func (sw *SlidingWindow) emit() {
 			now := util.NowNano()
 			windowUpperIndex := sw.queue.Len()
 			slideUpperIndex := windowUpperIndex
-			slideUpperTime := now - sw.size.Nanoseconds() + sw.slide.Nanoseconds()
-			windowBottomTime := now - sw.size.Nanoseconds()
+			slideUpperTime := now - sw.windowSize.Nanoseconds() + sw.slidingInterval.Nanoseconds()
+			windowBottomTime := now - sw.windowSize.Nanoseconds()
 			for i, item := range *sw.queue {
 				if item.epoch < windowBottomTime {
 					windowBottomIndex = i
@@ -150,7 +154,7 @@ func (sw *SlidingWindow) emit() {
 	}
 }
 
-// generate a window
+// extract generates a new window.
 func extract(items []*Item) []interface{} {
 	rt := make([]interface{}, len(items))
 	for i, item := range items {

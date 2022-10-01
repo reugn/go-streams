@@ -1,7 +1,7 @@
 package flow
 
 import (
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/reugn/go-streams"
@@ -13,72 +13,78 @@ type ThrottleMode int8
 const (
 	// Backpressure on overflow mode.
 	Backpressure ThrottleMode = iota
+
 	// Discard elements on overflow mode.
 	Discard
 )
 
 // Throttler limits the throughput to a specific number of elements per time unit.
 type Throttler struct {
-	sync.Mutex
-	elements uint
-	period   time.Duration
-	mode     ThrottleMode
-	in       chan interface{}
-	out      chan interface{}
-	notify   chan interface{}
-	counter  uint
+	maxElements uint64
+	period      time.Duration
+	mode        ThrottleMode
+	in          chan interface{}
+	out         chan interface{}
+	notify      chan struct{}
+	done        chan struct{}
+	counter     uint64
 }
 
 // Verify Throttler satisfies the Flow interface.
 var _ streams.Flow = (*Throttler)(nil)
 
 // NewThrottler returns a new Throttler instance.
+//
 // elements is the maximum number of elements to be produced per the given period of time.
 // bufferSize defines the incoming elements buffer size.
 // mode defines the Throttler flow behavior on elements buffer overflow.
 func NewThrottler(elements uint, period time.Duration, bufferSize uint, mode ThrottleMode) *Throttler {
 	throttler := &Throttler{
-		elements: elements,
-		period:   period,
-		mode:     mode,
-		in:       make(chan interface{}),
-		out:      make(chan interface{}, bufferSize),
-		notify:   make(chan interface{}),
-		counter:  0,
+		maxElements: uint64(elements),
+		period:      period,
+		mode:        mode,
+		in:          make(chan interface{}),
+		out:         make(chan interface{}, bufferSize),
+		notify:      make(chan struct{}),
+		done:        make(chan struct{}),
+		counter:     0,
 	}
 	go throttler.resetCounterLoop(period)
 	go throttler.bufferize()
+
 	return throttler
 }
 
-// count the next element.
+// incrementCounter increments the elements counter.
 func (th *Throttler) incrementCounter() {
-	th.Lock()
-	defer th.Unlock()
-	th.counter++
+	atomic.AddUint64(&th.counter, 1)
 }
 
+// quotaHit verifies if the quota per time unit is exceeded.
 func (th *Throttler) quotaHit() bool {
-	return th.counter == th.elements
+	return atomic.LoadUint64(&th.counter) >= th.maxElements
 }
 
-// the scheduled elements counter refresher.
+// resetCounterLoop is the scheduled quota refresher.
 func (th *Throttler) resetCounterLoop(after time.Duration) {
 	ticker := time.NewTicker(after)
 	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ticker.C:
-			th.Lock()
 			if th.quotaHit() {
+				atomic.StoreUint64(&th.counter, 0)
 				th.doNotify()
 			}
-			th.counter = 0
-			th.Unlock()
+
+		case <-th.done:
+			return
 		}
 	}
 }
 
+// doNotify notifies the producer goroutine with quota reset.
 func (th *Throttler) doNotify() {
 	select {
 	case th.notify <- struct{}{}:
@@ -86,24 +92,27 @@ func (th *Throttler) doNotify() {
 	}
 }
 
-// start buffering incoming elements.
-// panics on unsupported ThrottleMode.
+// bufferize starts buffering incoming elements.
+// panics on an unsupported ThrottleMode.
 func (th *Throttler) bufferize() {
-	defer close(th.out)
-	if th.mode == Discard {
+	switch th.mode {
+	case Discard:
 		for e := range th.in {
 			select {
 			case th.out <- e:
 			default:
 			}
 		}
-	} else if th.mode == Backpressure {
+	case Backpressure:
 		for e := range th.in {
 			th.out <- e
 		}
-	} else {
+	default:
 		panic("Unsupported ThrottleMode")
 	}
+	close(th.done)
+	close(th.out)
+	close(th.notify)
 }
 
 // Via streams data through the given flow
@@ -127,6 +136,7 @@ func (th *Throttler) In() chan<- interface{} {
 	return th.in
 }
 
+// doStream streams data to the next Inlet.
 func (th *Throttler) doStream(inlet streams.Inlet) {
 	for elem := range th.Out() {
 		if th.quotaHit() {

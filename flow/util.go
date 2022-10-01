@@ -17,14 +17,14 @@ func DoStream(outlet streams.Outlet, inlet streams.Inlet) {
 	}()
 }
 
-// Split splits the stream into two flows according to some criterion.
-func Split(outlet streams.Outlet, cond func(interface{}) bool) [2]streams.Flow {
+// Split splits the stream into two flows according to the given boolean predicate.
+func Split(outlet streams.Outlet, predicate func(interface{}) bool) [2]streams.Flow {
 	condTrue := NewPassThrough()
 	condFalse := NewPassThrough()
 
 	go func() {
 		for elem := range outlet.Out() {
-			if cond(elem) {
+			if predicate(elem) {
 				condTrue.In() <- elem
 			} else {
 				condFalse.In() <- elem
@@ -55,6 +55,23 @@ func FanOut(outlet streams.Outlet, magnitude int) []streams.Flow {
 			close(out[i].In())
 		}
 	}()
+
+	return out
+}
+
+// RoundRobin creates a balanced number of flows from the single outlet.
+// This can be useful when work can be parallelized across multiple cores.
+func RoundRobin(outlet streams.Outlet, magnitude int) []streams.Flow {
+	out := make([]streams.Flow, magnitude)
+	for i := 0; i < magnitude; i++ {
+		out[i] = NewPassThrough()
+		go func(o streams.Flow) {
+			defer close(o.In())
+			for elem := range outlet.Out() {
+				o.In() <- elem
+			}
+		}(out[i])
+	}
 
 	return out
 }

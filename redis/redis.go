@@ -9,7 +9,7 @@ import (
 	"github.com/reugn/go-streams/flow"
 )
 
-// RedisSource is a Redis Pub/Sub Source
+// RedisSource represents a Redis Pub/Sub source connector.
 type RedisSource struct {
 	ctx     context.Context
 	redisdb *redis.Client
@@ -17,7 +17,7 @@ type RedisSource struct {
 	out     chan interface{}
 }
 
-// NewRedisSource returns a new RedisSource instance
+// NewRedisSource returns a new RedisSource instance.
 func NewRedisSource(ctx context.Context, config *redis.Options, channel string) (*RedisSource, error) {
 	redisdb := redis.NewClient(config)
 	pubsub := redisdb.Subscribe(channel)
@@ -46,6 +46,7 @@ loop:
 		select {
 		case <-rs.ctx.Done():
 			break loop
+
 		case msg := <-ch:
 			rs.out <- msg
 		}
@@ -67,19 +68,19 @@ func (rs *RedisSource) Out() <-chan interface{} {
 	return rs.out
 }
 
-// RedisSink is a Redis Pub/Sub Sink
+// RedisSink represents a Redis Pub/Sub sink connector.
 type RedisSink struct {
 	redisdb *redis.Client
 	channel string
 	in      chan interface{}
 }
 
-// NewRedisSink returns a new RedisSink instance
+// NewRedisSink returns a new RedisSink instance.
 func NewRedisSink(config *redis.Options, channel string) *RedisSink {
 	sink := &RedisSink{
-		redis.NewClient(config),
-		channel,
-		make(chan interface{}),
+		redisdb: redis.NewClient(config),
+		channel: channel,
+		in:      make(chan interface{}),
 	}
 
 	go sink.init()
@@ -95,6 +96,7 @@ func (rs *RedisSink) init() {
 			if err != nil {
 				log.Printf("redisdb.Publish failed with: %s", err)
 			}
+
 		default:
 			log.Printf("Unsupported message type %v", m)
 		}

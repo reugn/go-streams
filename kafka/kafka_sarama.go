@@ -11,10 +11,9 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/reugn/go-streams"
 	"github.com/reugn/go-streams/flow"
-	"github.com/reugn/go-streams/util"
 )
 
-// KafkaSource connector
+// KafkaSource represents an Apache Kafka source connector.
 type KafkaSource struct {
 	consumer  sarama.ConsumerGroup
 	handler   sarama.ConsumerGroupHandler
@@ -25,33 +24,36 @@ type KafkaSource struct {
 	wg        *sync.WaitGroup
 }
 
-// NewKafkaSource returns a new KafkaSource instance
+// NewKafkaSource returns a new KafkaSource instance.
 func NewKafkaSource(ctx context.Context, addrs []string, groupID string,
-	config *sarama.Config, topics ...string) *KafkaSource {
+	config *sarama.Config, topics ...string) (*KafkaSource, error) {
 	consumerGroup, err := sarama.NewConsumerGroup(addrs, groupID, config)
-	util.Check(err)
+	if err != nil {
+		return nil, err
+	}
+
 	out := make(chan interface{})
 	cctx, cancel := context.WithCancel(ctx)
 
 	sink := &KafkaSource{
-		consumerGroup,
-		&GroupHandler{make(chan struct{}), out},
-		topics,
-		out,
-		cctx,
-		cancel,
-		&sync.WaitGroup{},
+		consumer:  consumerGroup,
+		handler:   &GroupHandler{make(chan struct{}), out},
+		topics:    topics,
+		out:       out,
+		ctx:       cctx,
+		cancelCtx: cancel,
+		wg:        &sync.WaitGroup{},
 	}
 
 	go sink.init()
-	return sink
+	return sink, nil
 }
 
 func (ks *KafkaSource) claimLoop() {
 	ks.wg.Add(1)
 	defer func() {
 		ks.wg.Done()
-		log.Printf("Exiting the Kafka claimLoop")
+		log.Printf("Exiting Kafka claimLoop")
 	}()
 	for {
 		handler := ks.handler.(*GroupHandler)
@@ -84,7 +86,7 @@ func (ks *KafkaSource) init() {
 	case <-ks.ctx.Done():
 	}
 
-	log.Printf("Closing the Kafka consumer")
+	log.Printf("Closing Kafka consumer")
 	ks.wg.Wait()
 	close(ks.out)
 	ks.consumer.Close()
@@ -130,56 +132,70 @@ func (handler *GroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, c
 				session.MarkMessage(message, "")
 				handler.out <- message
 			}
+
 		case <-session.Context().Done():
 			return session.Context().Err()
 		}
 	}
 }
 
-// KafkaSink connector
+// KafkaSink represents an Apache Kafka sink connector.
 type KafkaSink struct {
 	producer sarama.SyncProducer
 	topic    string
 	in       chan interface{}
 }
 
-// NewKafkaSink returns a new KafkaSink instance
-func NewKafkaSink(addrs []string, config *sarama.Config, topic string) *KafkaSink {
+// NewKafkaSink returns a new KafkaSink instance.
+func NewKafkaSink(addrs []string, config *sarama.Config, topic string) (*KafkaSink, error) {
 	producer, err := sarama.NewSyncProducer(addrs, config)
-	util.Check(err)
-	sink := &KafkaSink{
-		producer,
-		topic,
-		make(chan interface{}),
+	if err != nil {
+		return nil, err
 	}
+
+	sink := &KafkaSink{
+		producer: producer,
+		topic:    topic,
+		in:       make(chan interface{}),
+	}
+
 	go sink.init()
-	return sink
+	return sink, nil
 }
 
 // init starts the main loop
 func (ks *KafkaSink) init() {
 	for msg := range ks.in {
+		var err error
 		switch m := msg.(type) {
 		case *sarama.ProducerMessage:
-			ks.producer.SendMessage(m)
+			_, _, err = ks.producer.SendMessage(m)
+
 		case *sarama.ConsumerMessage:
 			sMsg := &sarama.ProducerMessage{
 				Topic: ks.topic,
 				Key:   sarama.StringEncoder(m.Key),
 				Value: sarama.StringEncoder(m.Value),
 			}
-			ks.producer.SendMessage(sMsg)
+			_, _, err = ks.producer.SendMessage(sMsg)
+
 		case string:
 			sMsg := &sarama.ProducerMessage{
 				Topic: ks.topic,
 				Value: sarama.StringEncoder(m),
 			}
-			ks.producer.SendMessage(sMsg)
+			_, _, err = ks.producer.SendMessage(sMsg)
+
 		default:
 			log.Printf("Unsupported message type %v", m)
 		}
+
+		if err != nil {
+			log.Printf("Error processing Kafka message: %s", err)
+		}
 	}
-	log.Printf("Closing the Kafka producer")
+
+	log.Printf("Closing Kafka producer")
 	ks.producer.Close()
 }
 

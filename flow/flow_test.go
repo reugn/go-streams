@@ -2,6 +2,7 @@ package flow_test
 
 import (
 	"container/heap"
+	"fmt"
 	"reflect"
 	"sort"
 	"strings"
@@ -13,137 +14,135 @@ import (
 	"github.com/reugn/go-streams/util"
 )
 
-var toUpper = func(in interface{}) interface{} {
-	msg := in.(string)
-	return strings.ToUpper(msg)
+var addAsterisk = func(in string) []string {
+	resultSlice := make([]string, 2)
+	resultSlice[0] = in + "*"
+	resultSlice[1] = in + "**"
+	return resultSlice
 }
 
-var appendAsterix = func(in interface{}) []interface{} {
-	arr := in.([]interface{})
-	rt := make([]interface{}, len(arr))
-	for i, item := range arr {
-		msg := item.(string)
-		rt[i] = msg + "*"
-	}
-	return rt
+var filterNotContainsA = func(in string) bool {
+	return !strings.ContainsAny(in, "aA")
 }
 
-var flatten = func(in interface{}) []interface{} {
-	return in.([]interface{})
+var reduceSum = func(a int, b int) int {
+	return a + b
 }
 
-var filterA = func(in interface{}) bool {
-	msg := in.(string)
-	return msg != "a"
-}
-
-func ingest(source []string, in chan interface{}) {
+func ingestSlice[T any](source []T, in chan interface{}) {
 	for _, e := range source {
+		fmt.Printf("ingest: %v", e)
 		in <- e
 	}
 }
 
-func ingestDeferred(item string, in chan interface{}, wait time.Duration) {
+func ingestDeferred[T any](item T, in chan interface{}, wait time.Duration) {
 	time.Sleep(wait)
 	in <- item
 }
 
-func deferClose(in chan interface{}, d time.Duration) {
-	time.Sleep(d)
+func closeDeferred[T any](in chan T, wait time.Duration) {
+	time.Sleep(wait)
 	close(in)
 }
 
-func TestFlow(t *testing.T) {
+func TestComplexFlow(t *testing.T) {
 	in := make(chan interface{})
 	out := make(chan interface{})
 
 	source := ext.NewChanSource(in)
-	flow1 := flow.NewMap(toUpper, 1)
-	flow2 := flow.NewFlatMap(appendAsterix, 1)
-	flow3 := flow.NewFlatMap(flatten, 1)
+	toUpperMapFlow := flow.NewMap(strings.ToUpper, 1)
+	appendAsteriskFlatMapFlow := flow.NewFlatMap(addAsterisk, 1)
 	throttler := flow.NewThrottler(10, time.Second, 50, flow.Backpressure)
 	slidingWindow := flow.NewSlidingWindow(2*time.Second, 2*time.Second)
 	tumblingWindow := flow.NewTumblingWindow(time.Second)
+	filterNotContainsA := flow.NewFilter(filterNotContainsA, 1)
 	sink := ext.NewChanSink(out)
 
-	var _input = []string{"a", "b", "c"}
-	var _expectedOutput = []string{"A*", "B*", "C*"}
+	inputValues := []string{"a", "b", "c"}
+	go ingestSlice(inputValues, in)
+	go closeDeferred(in, 3*time.Second)
 
-	go ingest(_input, in)
-	go deferClose(in, 3*time.Second)
 	go func() {
-		source.Via(flow1).
+		source.
+			Via(toUpperMapFlow).
+			Via(appendAsteriskFlatMapFlow).
 			Via(tumblingWindow).
-			Via(flow3).
+			Via(flow.Flatten(1)).
 			Via(slidingWindow).
-			Via(flow2).
 			Via(throttler).
+			Via(flow.Flatten(1)).
+			Via(filterNotContainsA).
 			To(sink)
 	}()
 
-	var _output []string
+	var outputValues []string
 	for e := range sink.Out {
-		_output = append(_output, e.(string))
+		outputValues = append(outputValues, e.(string))
 	}
 
-	assertEqual(t, _expectedOutput, _output)
+	expectedValues := []string{"B*", "B**", "C*", "C**"}
+	assertEquals(t, expectedValues, outputValues)
 }
 
-func TestFlowUtil(t *testing.T) {
-	t.Run("FanOut", func(t *testing.T) {
-		in := make(chan interface{})
-		out := make(chan interface{})
+func TestFanOutFlow(t *testing.T) {
+	in := make(chan interface{})
+	out := make(chan interface{})
 
-		source := ext.NewChanSource(in)
-		flow1 := flow.NewMap(toUpper, 1)
-		filter := flow.NewFilter(filterA, 1)
-		sink := ext.NewChanSink(out)
+	source := ext.NewChanSource(in)
+	filterNotContainsA := flow.NewFilter(filterNotContainsA, 1)
+	toUpperMapFlow := flow.NewMap(strings.ToUpper, 1)
+	sink := ext.NewChanSink(out)
 
-		var _input = []string{"a", "b", "c"}
-		var _expectedOutput = []string{"B", "B", "C", "C"}
+	inputValues := []string{"a", "b", "c"}
+	go ingestSlice(inputValues, in)
+	go closeDeferred(in, 100*time.Millisecond)
 
-		go ingest(_input, in)
-		go deferClose(in, time.Second)
-		go func() {
-			fanOut := flow.FanOut(source.Via(filter).Via(flow1), 2)
-			flow.Merge(fanOut...).To(sink)
-		}()
+	go func() {
+		fanOut := flow.FanOut(source.Via(filterNotContainsA).Via(toUpperMapFlow), 2)
+		flow.
+			Merge(fanOut...).
+			To(sink)
+	}()
 
-		var _output []string
-		for e := range sink.Out {
-			_output = append(_output, e.(string))
-		}
-		sort.Strings(_output)
+	var outputValues []string
+	for e := range sink.Out {
+		outputValues = append(outputValues, e.(string))
+	}
+	sort.Strings(outputValues)
 
-		assertEqual(t, _expectedOutput, _output)
-	})
-	t.Run("RoundRobin", func(t *testing.T) {
-		in := make(chan interface{})
-		out := make(chan interface{})
+	expectedValues := []string{"B", "B", "C", "C"}
+	assertEquals(t, expectedValues, outputValues)
+}
 
-		source := ext.NewChanSource(in)
-		flow1 := flow.NewMap(toUpper, 1)
-		filter := flow.NewFilter(filterA, 1)
-		sink := ext.NewChanSink(out)
+func TestRoundRobinFlow(t *testing.T) {
+	in := make(chan interface{})
+	out := make(chan interface{})
 
-		var _input = []string{"a", "b", "c"}
-		var _expectedOutput = []string{"B", "C"}
+	source := ext.NewChanSource(in)
+	filterNotContainsA := flow.NewFilter(filterNotContainsA, 1)
+	toUpperMapFlow := flow.NewMap(strings.ToUpper, 1)
+	sink := ext.NewChanSink(out)
 
-		go ingest(_input, in)
-		go deferClose(in, time.Second)
-		go func() {
-			fanOut := flow.RoundRobin(source.Via(filter).Via(flow1), 2)
-			flow.Merge(fanOut...).To(sink)
-		}()
+	inputValues := []string{"a", "b", "c"}
+	go ingestSlice(inputValues, in)
+	go closeDeferred(in, 100*time.Millisecond)
 
-		var _output []string
-		for e := range sink.Out {
-			_output = append(_output, e.(string))
-		}
-		sort.Strings(_output)
+	go func() {
+		roundRobin := flow.RoundRobin(source.Via(filterNotContainsA).Via(toUpperMapFlow), 2)
+		flow.
+			Merge(roundRobin...).
+			To(sink)
+	}()
 
-		assertEqual(t, _expectedOutput, _output)
-	})
+	var outputValues []string
+	for e := range sink.Out {
+		outputValues = append(outputValues, e.(string))
+	}
+	sort.Strings(outputValues)
+
+	expectedValues := []string{"B", "C"}
+	assertEquals(t, expectedValues, outputValues)
 }
 
 func TestSessionWindow(t *testing.T) {
@@ -154,24 +153,52 @@ func TestSessionWindow(t *testing.T) {
 	sessionWindow := flow.NewSessionWindow(200 * time.Millisecond)
 	sink := ext.NewChanSink(out)
 
-	var _input = []string{"a", "b", "c"}
-	go ingest(_input, in)
+	inputValues := []string{"a", "b", "c"}
+	go ingestSlice(inputValues, in)
 	go ingestDeferred("d", in, 300*time.Millisecond)
 	go ingestDeferred("e", in, 700*time.Millisecond)
-	go deferClose(in, time.Second)
+	go closeDeferred(in, time.Second)
+
 	go func() {
-		source.Via(sessionWindow).To(sink)
+		source.
+			Via(sessionWindow).
+			To(sink)
 	}()
 
-	var _output [][]interface{}
+	var outputValues [][]interface{}
 	for e := range sink.Out {
-		_output = append(_output, e.([]interface{}))
+		outputValues = append(outputValues, e.([]interface{}))
 	}
 
-	assertEqual(t, len(_output), 3)
-	assertEqual(t, len(_output[0]), 3)
-	assertEqual(t, len(_output[1]), 1)
-	assertEqual(t, len(_output[2]), 1)
+	assertEquals(t, 3, len(outputValues))
+	assertEquals(t, 3, len(outputValues[0]))
+	assertEquals(t, 1, len(outputValues[1]))
+	assertEquals(t, 1, len(outputValues[2]))
+}
+
+func TestReduceFlow(t *testing.T) {
+	in := make(chan interface{}, 5)
+	out := make(chan interface{}, 5)
+
+	source := ext.NewChanSource(in)
+	reduceFlow := flow.NewReduce(reduceSum)
+	sink := ext.NewChanSink(out)
+
+	inputValues := []int{1, 2, 3, 4, 5}
+	ingestSlice(inputValues, in)
+	close(in)
+
+	source.
+		Via(reduceFlow).
+		To(sink)
+
+	var outputValues []int
+	for e := range sink.Out {
+		outputValues = append(outputValues, e.(int))
+	}
+
+	expectedValues := []int{1, 3, 6, 10, 15}
+	assertEquals(t, expectedValues, outputValues)
 }
 
 func TestQueue(t *testing.T) {
@@ -184,11 +211,11 @@ func TestQueue(t *testing.T) {
 	queue.Update(head, util.NowNano())
 	first := heap.Pop(queue).(*flow.Item)
 
-	assertEqual(t, first.Msg.(int), 2)
+	assertEquals(t, 2, first.Msg.(int))
 }
 
-func assertEqual(t *testing.T, a interface{}, b interface{}) {
-	if !reflect.DeepEqual(a, b) {
-		t.Fatalf("%s != %s", a, b)
+func assertEquals[T any](t *testing.T, expected T, actual T) {
+	if !reflect.DeepEqual(expected, actual) {
+		t.Fatalf("%v != %v", expected, actual)
 	}
 }

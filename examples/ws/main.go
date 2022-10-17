@@ -120,21 +120,21 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	flow1 := flow.NewMap(appendAsterix, 1)
+
+	addAsteriskMapFlow := flow.NewMap(addAsterisk, 1)
 	sink, err := ext.NewWebSocketSink(ctx, url)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	source.
-		Via(flow1).
+		Via(addAsteriskMapFlow).
 		To(sink)
 
 	log.Print("Exiting...")
 }
 
-var appendAsterix = func(in interface{}) interface{} {
-	msg := in.(ext.Message)
+var addAsterisk = func(msg ext.Message) string {
 	return string(msg.Payload) + "*"
 }
 

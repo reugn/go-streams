@@ -19,16 +19,15 @@ func (msg *message) String() string {
 func main() {
 
 	source := ext.NewChanSource(tickerChan(time.Second * 1))
-	flow := flow.NewMap(mapp, 1)
+	mapFlow := flow.NewMap(addUTC, 1)
 	sink := ext.NewStdoutSink()
 
-	source.Via(flow).To(sink)
-
-	select {}
+	source.
+		Via(mapFlow).
+		To(sink)
 }
 
-var mapp = func(in interface{}) interface{} {
-	msg := in.(*message)
+var addUTC = func(msg *message) *message {
 	msg.Msg += "-UTC"
 	return msg
 }

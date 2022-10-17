@@ -24,18 +24,18 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	flow1 := flow.NewMap(toUpper, 1)
+
+	toUpperMapFlow := flow.NewMap(toUpper, 1)
 	sink, err := ext.NewPulsarSink(ctx, &clientOptions, &producerOptions)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	source.
-		Via(flow1).
+		Via(toUpperMapFlow).
 		To(sink)
 }
 
-var toUpper = func(in interface{}) interface{} {
-	msg := in.(pulsar.Message)
+var toUpper = func(msg pulsar.Message) string {
 	return strings.ToUpper(string(msg.Payload()))
 }

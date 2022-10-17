@@ -33,15 +33,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	flow1 := flow.NewMap(toUpper, 1)
+
+	toUpperMapFlow := flow.NewMap(toUpper, 1)
 	sink := ext.NewRedisSink(config, "test2")
 
 	source.
-		Via(flow1).
+		Via(toUpperMapFlow).
 		To(sink)
 }
 
-var toUpper = func(in interface{}) interface{} {
-	msg := in.(*redis.Message)
+var toUpper = func(msg *redis.Message) string {
 	return strings.ToUpper(msg.Payload)
 }

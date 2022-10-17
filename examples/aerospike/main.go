@@ -36,20 +36,23 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	flow1 := flow.NewMap(transform, 1)
+
+	mapFlow := flow.NewMap(transform, 1)
 	sink, err := ext.NewAerospikeSink(ctx, properties, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	source.
-		Via(flow1).
+		Via(mapFlow).
 		To(sink)
 }
 
-var transform = func(in interface{}) interface{} {
-	msg := in.(*aero.Record)
+var transform = func(msg *aero.Record) ext.AerospikeKeyBins {
 	log.Println(msg.Bins)
 	msg.Bins["ts"] = util.NowNano()
-	return ext.AerospikeKeyBins{Key: msg.Key, Bins: msg.Bins}
+	return ext.AerospikeKeyBins{
+		Key:  msg.Key,
+		Bins: msg.Bins,
+	}
 }

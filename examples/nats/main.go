@@ -35,7 +35,7 @@ func jetStream() {
 	defer cancel()
 
 	fileSource := extension.NewFileSource("in.txt")
-	flow1 := flow.NewMap(toUpperString, 1)
+	toUpperMapFlow := flow.NewMap(toUpperString, 1)
 	jetSink, err := ext.NewJetStreamSink("stream1", "stream1.subject1", "nats://localhost:4222")
 	if err != nil {
 		log.Fatal(err)
@@ -45,11 +45,16 @@ func jetStream() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	flow2 := flow.NewMap(fetchJetMsg, 1)
+	fetchJetMsgMapFlow := flow.NewMap(fetchJetMsg, 1)
 	stdOutSInk := extension.NewStdoutSink()
 
-	fileSource.Via(flow1).To(jetSink)
-	jetSource.Via(flow2).To(stdOutSInk)
+	fileSource.
+		Via(toUpperMapFlow).
+		To(jetSink)
+
+	jetSource.
+		Via(fetchJetMsgMapFlow).
+		To(stdOutSInk)
 }
 
 // docker run --rm --name nats-streaming -p 4223:4223 -p 8223:8223 nats-streaming -p 4223 -m 8223
@@ -57,7 +62,7 @@ func streaming() {
 	ctx := context.Background()
 
 	fileSource := extension.NewFileSource("in.txt")
-	flow1 := flow.NewMap(toUpperString, 1)
+	toUpperMapFlow := flow.NewMap(toUpperString, 1)
 	prodConn, err := stan.Connect("test-cluster", "test-producer", stan.NatsURL("nats://localhost:4223"))
 	if err != nil {
 		log.Fatal(err)
@@ -71,24 +76,26 @@ func streaming() {
 	// This example uses the StartWithLastReceived subscription option
 	// there are more available at https://docs.nats.io/developing-with-nats-streaming/receiving
 	streamingSource := ext.NewStreamingSource(ctx, subConn, stan.StartWithLastReceived(), "topic1")
-	flow2 := flow.NewMap(fetchStanMsg, 1)
+	fetchStanMsgMapFlow := flow.NewMap(fetchStanMsg, 1)
 	stdOutSInk := extension.NewStdoutSink()
 
-	fileSource.Via(flow1).To(streamingSink)
-	streamingSource.Via(flow2).To(stdOutSInk)
+	fileSource.
+		Via(toUpperMapFlow).
+		To(streamingSink)
+
+	streamingSource.
+		Via(fetchStanMsgMapFlow).
+		To(stdOutSInk)
 }
 
-var toUpperString = func(in interface{}) interface{} {
-	msg := in.(string)
+var toUpperString = func(msg string) []byte {
 	return []byte(strings.ReplaceAll(strings.ToUpper(msg), "\n", ""))
 }
 
-var fetchJetMsg = func(in interface{}) interface{} {
-	msg := in.(*nats.Msg)
+var fetchJetMsg = func(msg *nats.Msg) string {
 	return string(msg.Data)
 }
 
-var fetchStanMsg = func(in interface{}) interface{} {
-	msg := in.(*stan.Msg)
+var fetchStanMsg = func(msg *stan.Msg) string {
 	return string(msg.Data)
 }

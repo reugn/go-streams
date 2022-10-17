@@ -26,35 +26,34 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	flow1 := flow.NewMap(toUpper, 1)
-	flow2 := flow.NewFlatMap(appendAsterisk, 1)
+
+	toUpperMapFlow := flow.NewMap(toUpper, 1)
+	appendAsteriskFlatMapFlow := flow.NewFlatMap(appendAsterisk, 1)
 	sink, err := ext.NewKafkaSink(hosts, config, "test2")
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	throttler := flow.NewThrottler(1, time.Second, 50, flow.Discard)
 	// slidingWindow := flow.NewSlidingWindow(time.Second*30, time.Second*5)
 	tumblingWindow := flow.NewTumblingWindow(time.Second * 5)
 
 	source.
-		Via(flow1).
+		Via(toUpperMapFlow).
 		Via(throttler).
 		Via(tumblingWindow).
-		Via(flow2).
+		Via(appendAsteriskFlatMapFlow).
 		To(sink)
 }
 
-var toUpper = func(in interface{}) interface{} {
-	msg := in.(*sarama.ConsumerMessage)
+var toUpper = func(msg *sarama.ConsumerMessage) *sarama.ConsumerMessage {
 	msg.Value = []byte(strings.ToUpper(string(msg.Value)))
 	return msg
 }
 
-var appendAsterisk = func(in interface{}) []interface{} {
-	arr := in.([]interface{})
-	outArr := make([]interface{}, len(arr))
-	for i, item := range arr {
-		msg := item.(*sarama.ConsumerMessage)
+var appendAsterisk = func(inArr []*sarama.ConsumerMessage) []*sarama.ConsumerMessage {
+	outArr := make([]*sarama.ConsumerMessage, len(inArr))
+	for i, msg := range inArr {
 		msg.Value = []byte(string(msg.Value) + "*")
 		outArr[i] = msg
 	}

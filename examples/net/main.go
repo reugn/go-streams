@@ -25,19 +25,19 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	flow1 := flow.NewMap(toUpper, 1)
+
+	toUpperMapFlow := flow.NewMap(toUpper, 1)
 	sink, err := ext.NewNetSink(ext.UDP, "127.0.0.1:3535")
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	source.
-		Via(flow1).
+		Via(toUpperMapFlow).
 		To(sink)
 }
 
-var toUpper = func(in interface{}) interface{} {
-	msg := in.(string)
+var toUpper = func(msg string) string {
 	log.Printf("Got: %s", msg)
 	return strings.ToUpper(msg)
 }

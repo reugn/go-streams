@@ -9,8 +9,8 @@ import (
 // DoStream streams data from the outlet to inlet.
 func DoStream(outlet streams.Outlet, inlet streams.Inlet) {
 	go func() {
-		for elem := range outlet.Out() {
-			inlet.In() <- elem
+		for element := range outlet.Out() {
+			inlet.In() <- element
 		}
 
 		close(inlet.In())
@@ -23,11 +23,11 @@ func Split(outlet streams.Outlet, predicate func(interface{}) bool) [2]streams.F
 	condFalse := NewPassThrough()
 
 	go func() {
-		for elem := range outlet.Out() {
-			if predicate(elem) {
-				condTrue.In() <- elem
+		for element := range outlet.Out() {
+			if predicate(element) {
+				condTrue.In() <- element
 			} else {
-				condFalse.In() <- elem
+				condFalse.In() <- element
 			}
 		}
 		close(condTrue.In())
@@ -46,9 +46,9 @@ func FanOut(outlet streams.Outlet, magnitude int) []streams.Flow {
 	}
 
 	go func() {
-		for elem := range outlet.Out() {
+		for element := range outlet.Out() {
 			for _, socket := range out {
-				socket.In() <- elem
+				socket.In() <- element
 			}
 		}
 		for i := 0; i < magnitude; i++ {
@@ -67,8 +67,8 @@ func RoundRobin(outlet streams.Outlet, magnitude int) []streams.Flow {
 		out[i] = NewPassThrough()
 		go func(o streams.Flow) {
 			defer close(o.In())
-			for elem := range outlet.Out() {
-				o.In() <- elem
+			for element := range outlet.Out() {
+				o.In() <- element
 			}
 		}(out[i])
 	}
@@ -84,18 +84,25 @@ func Merge(outlets ...streams.Flow) streams.Flow {
 
 	for _, out := range outlets {
 		go func(outlet streams.Outlet) {
-			for elem := range outlet.Out() {
-				merged.In() <- elem
+			for element := range outlet.Out() {
+				merged.In() <- element
 			}
 			wg.Done()
 		}(out)
 	}
 
-	// close merged.In() on the last outlet close.
+	// close the in channel on the last outlet close.
 	go func(wg *sync.WaitGroup) {
 		wg.Wait()
 		close(merged.In())
 	}(&wg)
 
 	return merged
+}
+
+// Flatten creates a Flow to flatten the stream of slices.
+func Flatten(parallelism uint) streams.Flow {
+	return NewFlatMap(func(element []any) []any {
+		return element
+	}, parallelism)
 }

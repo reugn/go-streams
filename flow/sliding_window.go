@@ -118,34 +118,39 @@ func (sw *SlidingWindow) emit() {
 		select {
 		case <-ticker.C:
 			sw.Lock()
-			// build a window slice and send it to the out chan
-			var windowBottomIndex int
 			now := util.NowNano()
-			windowUpperIndex := sw.queue.Len()
-			slideUpperIndex := windowUpperIndex
-			slideUpperTime := now - sw.windowSize.Nanoseconds() + sw.slidingInterval.Nanoseconds()
 			windowBottomTime := now - sw.windowSize.Nanoseconds()
-			for i, item := range *sw.queue {
+			bufferStartTime := now - sw.windowSize.Nanoseconds() + sw.slidingInterval.Nanoseconds()
+
+			windowEmit := make([]interface{}, 0, sw.queue.Len())
+			windowBuffer := make([]interface{}, 0, sw.queue.Len())
+
+			for sw.queue.Len() > 0 {
+				item := (heap.Pop(sw.queue)).(*Item)
+
 				if item.epoch < windowBottomTime {
-					windowBottomIndex = i
+					continue
 				}
-				if item.epoch > slideUpperTime {
-					slideUpperIndex = i
-					break
+
+				if item.epoch > bufferStartTime {
+					windowBuffer = append(windowBuffer, item)
+				}
+
+				windowEmit = append(windowEmit, item.Msg)
+			}
+
+			// when sw.slidingInterval < sw.windowSize, add buffer data to heap for next window
+			if len(windowBuffer) > 0 {
+				for idx := 0; idx < len(windowBuffer); idx++ {
+					heap.Push(sw.queue, windowBuffer[idx])
 				}
 			}
-			windowSlice := extract(sw.queue.Slice(windowBottomIndex, slideUpperIndex))
-			if windowUpperIndex > 0 {
-				s := sw.queue.Slice(slideUpperIndex, windowUpperIndex)
-				// reset the queue
-				sw.queue = &s
-				heap.Init(sw.queue)
-			}
+
 			sw.Unlock()
 
-			// send window slice to the out chan
-			if len(windowSlice) > 0 {
-				sw.out <- windowSlice
+			// send window data to the out chan
+			if len(windowEmit) > 0 {
+				sw.out <- windowEmit
 			}
 
 		case <-sw.done:

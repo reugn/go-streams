@@ -158,12 +158,3 @@ func (sw *SlidingWindow) emit() {
 		}
 	}
 }
-
-// extract generates a new window.
-func extract(items []*Item) []interface{} {
-	rt := make([]interface{}, len(items))
-	for i, item := range items {
-		rt[i] = item.Msg
-	}
-	return rt
-}

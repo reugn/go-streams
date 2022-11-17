@@ -219,3 +219,42 @@ func assertEquals[T any](t *testing.T, expected T, actual T) {
 		t.Fatalf("%v != %v", expected, actual)
 	}
 }
+
+// This test assures that the two sources s1=[1,2,3] and s2=[1,2,3] are zipped into a stream of [(1,1), (2,2), (3,3)]
+func TestZipWith(t *testing.T) {
+	in1 := make(chan interface{})
+	in2 := make(chan interface{})
+	out := make(chan interface{})
+
+	source1 := ext.NewChanSource(in1)
+	source2 := ext.NewChanSource(in2)
+
+	// This combineFunc zips the two sources into an array:
+	// If source1 emmitted 1 and also source2 emmited 1, thn combine func will output []int{1, 1}.
+	combineFunc := func(elements *[]int) []int {
+		return *elements
+	}
+	zipped := flow.ZipWith(combineFunc, source1, source2)
+
+	sink := ext.NewChanSink(out)
+
+	inputValues1 := []int{1, 2, 3}
+	go ingestSlice(inputValues1, in1)
+	go closeDeferred(in1, 3*time.Second)
+
+	inputValues2 := []int{1, 2, 3}
+	go ingestSlice(inputValues2, in2)
+	go closeDeferred(in2, 3*time.Second)
+
+	go func() {
+		zipped.To(sink)
+	}()
+
+	var outputValues [][]int
+	for e := range sink.Out {
+		outputValues = append(outputValues, e.([]int))
+	}
+
+	expectedValues := [][]int{{1, 1}, {2, 2}, {3, 3}}
+	assertEquals(t, expectedValues, outputValues)
+}

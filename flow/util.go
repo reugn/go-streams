@@ -106,3 +106,34 @@ func Flatten(parallelism uint) streams.Flow {
 		return element
 	}, parallelism)
 }
+
+/*
+ZipWith takes an element from each outlet and zips them into the user-defined combineFunc() result.
+
+The order of items in "elements" param of combineFunc os the same order of the given outlets.
+
+For example, given sources s1 and s2 emmitting "a" and "b" respectively, combineFunc will be called with elements = *[]string{"a", "b"}.
+
+ZipWith blocks until all each outlet emmitted a value before emmiting to its output channel.
+*/
+func ZipWith[T, Z any](combineFunc func(elements *[]T) Z, outlets ...streams.Outlet) streams.Flow {
+
+	first := outlets[0]
+	rest := outlets[1:]
+	outc := NewPassThrough()
+
+	go func() {
+		for element := range first.Out() {
+			zipped := make([]T, len(outlets))
+			zipped[0] = element.(T)
+			for i, outlet := range rest {
+				e := <-outlet.Out()
+				zipped[i+1] = e.(T)
+			}
+			outc.In() <- combineFunc(&zipped)
+		}
+		close(outc.In())
+	}()
+
+	return outc
+}

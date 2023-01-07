@@ -1,13 +1,19 @@
 name: Build
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - master
 
 jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: [1.19]
+        go-version: [1.18.x, 1.19.x]
     steps:
     - name: Setup Go
       uses: actions/setup-go@v3
@@ -21,4 +27,5 @@ jobs:
       run: go test ./... -coverprofile=coverage.out -covermode=atomic
 
     - name: Upload coverage to Codecov
+      if: ${{ matrix.go-version == '1.18.x' }}
       run: bash <(curl -s https://codecov.io/bash)

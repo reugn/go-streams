@@ -1,8 +1,6 @@
 package flow_test
 
 import (
-	"container/heap"
-	"fmt"
 	"reflect"
 	"sort"
 	"strings"
@@ -11,7 +9,6 @@ import (
 
 	ext "github.com/reugn/go-streams/extension"
 	"github.com/reugn/go-streams/flow"
-	"github.com/reugn/go-streams/util"
 )
 
 var addAsterisk = func(in string) []string {
@@ -31,7 +28,6 @@ var reduceSum = func(a int, b int) int {
 
 func ingestSlice[T any](source []T, in chan interface{}) {
 	for _, e := range source {
-		fmt.Printf("ingest: %v", e)
 		in <- e
 	}
 }
@@ -53,15 +49,14 @@ func TestComplexFlow(t *testing.T) {
 	source := ext.NewChanSource(in)
 	toUpperMapFlow := flow.NewMap(strings.ToUpper, 1)
 	appendAsteriskFlatMapFlow := flow.NewFlatMap(addAsterisk, 1)
-	throttler := flow.NewThrottler(10, time.Second, 50, flow.Backpressure)
-	slidingWindow := flow.NewSlidingWindow(2*time.Second, 2*time.Second)
-	tumblingWindow := flow.NewTumblingWindow(time.Second)
-	filterNotContainsA := flow.NewFilter(filterNotContainsA, 1)
+	throttler := flow.NewThrottler(10, 200*time.Millisecond, 50, flow.Backpressure)
+	tumblingWindow := flow.NewTumblingWindow(200 * time.Millisecond)
+	filterFlow := flow.NewFilter(filterNotContainsA, 1)
 	sink := ext.NewChanSink(out)
 
 	inputValues := []string{"a", "b", "c"}
 	go ingestSlice(inputValues, in)
-	go closeDeferred(in, 3*time.Second)
+	go closeDeferred(in, time.Second)
 
 	go func() {
 		source.
@@ -69,10 +64,8 @@ func TestComplexFlow(t *testing.T) {
 			Via(appendAsteriskFlatMapFlow).
 			Via(tumblingWindow).
 			Via(flow.Flatten(1)).
-			Via(slidingWindow).
 			Via(throttler).
-			Via(flow.Flatten(1)).
-			Via(filterNotContainsA).
+			Via(filterFlow).
 			To(sink)
 	}()
 
@@ -85,12 +78,41 @@ func TestComplexFlow(t *testing.T) {
 	assertEquals(t, expectedValues, outputValues)
 }
 
+func TestSplitFlow(t *testing.T) {
+	in := make(chan interface{}, 3)
+	out := make(chan interface{}, 3)
+
+	source := ext.NewChanSource(in)
+	toUpperMapFlow := flow.NewMap(strings.ToUpper, 1)
+	sink := ext.NewChanSink(out)
+
+	inputValues := []string{"a", "b", "c"}
+	ingestSlice(inputValues, in)
+	close(in)
+
+	split := flow.Split(
+		source.
+			Via(toUpperMapFlow), filterNotContainsA)
+
+	flow.Merge(split[0], split[1]).
+		To(sink)
+
+	var outputValues []string
+	for e := range sink.Out {
+		outputValues = append(outputValues, e.(string))
+	}
+	sort.Strings(outputValues)
+
+	expectedValues := []string{"A", "B", "C"}
+	assertEquals(t, expectedValues, outputValues)
+}
+
 func TestFanOutFlow(t *testing.T) {
 	in := make(chan interface{})
 	out := make(chan interface{})
 
 	source := ext.NewChanSource(in)
-	filterNotContainsA := flow.NewFilter(filterNotContainsA, 1)
+	filterFlow := flow.NewFilter(filterNotContainsA, 1)
 	toUpperMapFlow := flow.NewMap(strings.ToUpper, 1)
 	sink := ext.NewChanSink(out)
 
@@ -99,7 +121,10 @@ func TestFanOutFlow(t *testing.T) {
 	go closeDeferred(in, 100*time.Millisecond)
 
 	go func() {
-		fanOut := flow.FanOut(source.Via(filterNotContainsA).Via(toUpperMapFlow), 2)
+		fanOut := flow.FanOut(
+			source.
+				Via(filterFlow).
+				Via(toUpperMapFlow), 2)
 		flow.
 			Merge(fanOut...).
 			To(sink)
@@ -120,7 +145,7 @@ func TestRoundRobinFlow(t *testing.T) {
 	out := make(chan interface{})
 
 	source := ext.NewChanSource(in)
-	filterNotContainsA := flow.NewFilter(filterNotContainsA, 1)
+	filterFlow := flow.NewFilter(filterNotContainsA, 1)
 	toUpperMapFlow := flow.NewMap(strings.ToUpper, 1)
 	sink := ext.NewChanSink(out)
 
@@ -129,7 +154,10 @@ func TestRoundRobinFlow(t *testing.T) {
 	go closeDeferred(in, 100*time.Millisecond)
 
 	go func() {
-		roundRobin := flow.RoundRobin(source.Via(filterNotContainsA).Via(toUpperMapFlow), 2)
+		roundRobin := flow.RoundRobin(
+			source.
+				Via(filterFlow).
+				Via(toUpperMapFlow), 2)
 		flow.
 			Merge(roundRobin...).
 			To(sink)
@@ -143,37 +171,6 @@ func TestRoundRobinFlow(t *testing.T) {
 
 	expectedValues := []string{"B", "C"}
 	assertEquals(t, expectedValues, outputValues)
-}
-
-func TestSessionWindow(t *testing.T) {
-	in := make(chan interface{})
-	out := make(chan interface{})
-
-	source := ext.NewChanSource(in)
-	sessionWindow := flow.NewSessionWindow(200 * time.Millisecond)
-	sink := ext.NewChanSink(out)
-
-	inputValues := []string{"a", "b", "c"}
-	go ingestSlice(inputValues, in)
-	go ingestDeferred("d", in, 300*time.Millisecond)
-	go ingestDeferred("e", in, 700*time.Millisecond)
-	go closeDeferred(in, time.Second)
-
-	go func() {
-		source.
-			Via(sessionWindow).
-			To(sink)
-	}()
-
-	var outputValues [][]interface{}
-	for e := range sink.Out {
-		outputValues = append(outputValues, e.([]interface{}))
-	}
-
-	assertEquals(t, 3, len(outputValues))
-	assertEquals(t, 3, len(outputValues[0]))
-	assertEquals(t, 1, len(outputValues[1]))
-	assertEquals(t, 1, len(outputValues[2]))
 }
 
 func TestReduceFlow(t *testing.T) {
@@ -199,19 +196,6 @@ func TestReduceFlow(t *testing.T) {
 
 	expectedValues := []int{1, 3, 6, 10, 15}
 	assertEquals(t, expectedValues, outputValues)
-}
-
-func TestQueue(t *testing.T) {
-	queue := &flow.PriorityQueue{}
-	heap.Push(queue, flow.NewItem(1, util.NowNano(), 0))
-	heap.Push(queue, flow.NewItem(2, 1234, 0))
-	heap.Push(queue, flow.NewItem(3, util.NowNano(), 0))
-	queue.Swap(0, 1)
-	head := queue.Head()
-	queue.Update(head, util.NowNano())
-	first := heap.Pop(queue).(*flow.Item)
-
-	assertEquals(t, 2, first.Msg.(int))
 }
 
 func assertEquals[T any](t *testing.T, expected T, actual T) {

@@ -49,14 +49,14 @@ func TestComplexFlow(t *testing.T) {
 	source := ext.NewChanSource(in)
 	toUpperMapFlow := flow.NewMap(strings.ToUpper, 1)
 	appendAsteriskFlatMapFlow := flow.NewFlatMap(addAsterisk, 1)
-	throttler := flow.NewThrottler(10, time.Second, 50, flow.Backpressure)
-	tumblingWindow := flow.NewTumblingWindow(time.Second)
-	filterNotContainsA := flow.NewFilter(filterNotContainsA, 1)
+	throttler := flow.NewThrottler(10, 200*time.Millisecond, 50, flow.Backpressure)
+	tumblingWindow := flow.NewTumblingWindow(200 * time.Millisecond)
+	filterFlow := flow.NewFilter(filterNotContainsA, 1)
 	sink := ext.NewChanSink(out)
 
 	inputValues := []string{"a", "b", "c"}
 	go ingestSlice(inputValues, in)
-	go closeDeferred(in, 3*time.Second)
+	go closeDeferred(in, time.Second)
 
 	go func() {
 		source.
@@ -65,7 +65,7 @@ func TestComplexFlow(t *testing.T) {
 			Via(tumblingWindow).
 			Via(flow.Flatten(1)).
 			Via(throttler).
-			Via(filterNotContainsA).
+			Via(filterFlow).
 			To(sink)
 	}()
 
@@ -78,12 +78,41 @@ func TestComplexFlow(t *testing.T) {
 	assertEquals(t, expectedValues, outputValues)
 }
 
+func TestSplitFlow(t *testing.T) {
+	in := make(chan interface{}, 3)
+	out := make(chan interface{}, 3)
+
+	source := ext.NewChanSource(in)
+	toUpperMapFlow := flow.NewMap(strings.ToUpper, 1)
+	sink := ext.NewChanSink(out)
+
+	inputValues := []string{"a", "b", "c"}
+	ingestSlice(inputValues, in)
+	close(in)
+
+	split := flow.Split(
+		source.
+			Via(toUpperMapFlow), filterNotContainsA)
+
+	flow.Merge(split[0], split[1]).
+		To(sink)
+
+	var outputValues []string
+	for e := range sink.Out {
+		outputValues = append(outputValues, e.(string))
+	}
+	sort.Strings(outputValues)
+
+	expectedValues := []string{"A", "B", "C"}
+	assertEquals(t, expectedValues, outputValues)
+}
+
 func TestFanOutFlow(t *testing.T) {
 	in := make(chan interface{})
 	out := make(chan interface{})
 
 	source := ext.NewChanSource(in)
-	filterNotContainsA := flow.NewFilter(filterNotContainsA, 1)
+	filterFlow := flow.NewFilter(filterNotContainsA, 1)
 	toUpperMapFlow := flow.NewMap(strings.ToUpper, 1)
 	sink := ext.NewChanSink(out)
 
@@ -94,7 +123,7 @@ func TestFanOutFlow(t *testing.T) {
 	go func() {
 		fanOut := flow.FanOut(
 			source.
-				Via(filterNotContainsA).
+				Via(filterFlow).
 				Via(toUpperMapFlow), 2)
 		flow.
 			Merge(fanOut...).
@@ -116,7 +145,7 @@ func TestRoundRobinFlow(t *testing.T) {
 	out := make(chan interface{})
 
 	source := ext.NewChanSource(in)
-	filterNotContainsA := flow.NewFilter(filterNotContainsA, 1)
+	filterFlow := flow.NewFilter(filterNotContainsA, 1)
 	toUpperMapFlow := flow.NewMap(strings.ToUpper, 1)
 	sink := ext.NewChanSink(out)
 
@@ -127,7 +156,7 @@ func TestRoundRobinFlow(t *testing.T) {
 	go func() {
 		roundRobin := flow.RoundRobin(
 			source.
-				Via(filterNotContainsA).
+				Via(filterFlow).
 				Via(toUpperMapFlow), 2)
 		flow.
 			Merge(roundRobin...).

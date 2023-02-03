@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	aero "github.com/aerospike/aerospike-client-go/v5"
+	aero "github.com/aerospike/aerospike-client-go/v6"
 	"github.com/reugn/go-streams"
 	"github.com/reugn/go-streams/flow"
 )
@@ -90,12 +90,11 @@ loop:
 
 		case t := <-ticker.C:
 			ts := t.UnixNano() - as.changeNotificationProperties.PollingInterval.Nanoseconds()
-			as.scanPolicy.PredExp = []aero.PredExp{
-				aero.NewPredExpRecLastUpdate(),
-				aero.NewPredExpIntegerValue(ts),
-				aero.NewPredExpIntegerGreater(),
-			}
-			log.Printf("Polling records %v", as.scanPolicy.PredExp)
+			as.scanPolicy.FilterExpression = aero.ExpGreater(
+				aero.ExpLastUpdate(),
+				aero.ExpIntVal(ts),
+			)
+			log.Printf("Polling records from %d", ts)
 
 			as.doScan()
 		}

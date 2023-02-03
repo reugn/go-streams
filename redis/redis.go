@@ -4,7 +4,7 @@ import (
 	"context"
 	"log"
 
-	"github.com/go-redis/redis"
+	"github.com/redis/go-redis/v9"
 	"github.com/reugn/go-streams"
 	"github.com/reugn/go-streams/flow"
 )
@@ -20,10 +20,10 @@ type RedisSource struct {
 // NewRedisSource returns a new RedisSource instance.
 func NewRedisSource(ctx context.Context, config *redis.Options, channel string) (*RedisSource, error) {
 	redisdb := redis.NewClient(config)
-	pubsub := redisdb.Subscribe(channel)
+	pubsub := redisdb.Subscribe(ctx, channel)
 
 	// Wait for a confirmation that subscription is created before publishing anything
-	_, err := pubsub.Receive()
+	_, err := pubsub.Receive(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -70,14 +70,16 @@ func (rs *RedisSource) Out() <-chan interface{} {
 
 // RedisSink represents a Redis Pub/Sub sink connector.
 type RedisSink struct {
+	ctx     context.Context
 	redisdb *redis.Client
 	channel string
 	in      chan interface{}
 }
 
 // NewRedisSink returns a new RedisSink instance.
-func NewRedisSink(config *redis.Options, channel string) *RedisSink {
+func NewRedisSink(ctx context.Context, config *redis.Options, channel string) *RedisSink {
 	sink := &RedisSink{
+		ctx:     ctx,
 		redisdb: redis.NewClient(config),
 		channel: channel,
 		in:      make(chan interface{}),
@@ -92,7 +94,7 @@ func (rs *RedisSink) init() {
 	for msg := range rs.in {
 		switch m := msg.(type) {
 		case string:
-			err := rs.redisdb.Publish(rs.channel, m).Err()
+			err := rs.redisdb.Publish(rs.ctx, rs.channel, m).Err()
 			if err != nil {
 				log.Printf("redisdb.Publish failed with: %s", err)
 			}

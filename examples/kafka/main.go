@@ -35,7 +35,6 @@ func main() {
 	}
 
 	throttler := flow.NewThrottler(1, time.Second, 50, flow.Discard)
-	// slidingWindow := flow.NewSlidingWindow(time.Second*30, time.Second*5)
 	tumblingWindow := flow.NewTumblingWindow(time.Second * 5)
 
 	source.

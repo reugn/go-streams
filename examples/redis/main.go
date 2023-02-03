@@ -8,7 +8,7 @@ import (
 
 	ext "github.com/reugn/go-streams/redis"
 
-	"github.com/go-redis/redis"
+	"github.com/redis/go-redis/v9"
 	"github.com/reugn/go-streams/flow"
 )
 
@@ -35,7 +35,7 @@ func main() {
 	}
 
 	toUpperMapFlow := flow.NewMap(toUpper, 1)
-	sink := ext.NewRedisSink(config, "test2")
+	sink := ext.NewRedisSink(ctx, config, "test2")
 
 	source.
 		Via(toUpperMapFlow).

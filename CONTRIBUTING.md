@@ -1,26 +1,25 @@
-# How to contribute
+# Contributing
 
-If you would like to contribute code to this project, fork the repository and send a pull request.
+`go-streams` is an open-source project and welcomes contributions and suggestions.  
+File an [issue](https://github.com/reugn/go-streams/issues) to report a bug or discuss a new feature.
+Open a pull request to propose changes.
 
-## Prerequisite
+## Prerequisites
 
-If you have not installed Go, install it according to the [installation instruction](http://golang.org/doc/install).
-Since the `go mod` package management tool is used in this project, **Go 1.11 or higher** version is required.
-
-## Fork
-
-Before contributing, you need to fork [go-streams](https://github.com/reugn/go-streams) to your github repository.
+Go `1.18` is the minimum requirement for this project; refer to the [Download and Install](http://golang.org/doc/install) page for setup.
 
 ## Contribution flow
 
-* [Configure remote for a fork](https://help.github.com/en/github/collaborating-with-issues-and-pull-requests/configuring-a-remote-for-a-fork)
-* git checkout -b <your_branch>
-* git add .
-* git commit -m "commit message"
-* git push --set-upstream origin <your_branch>
+* [Fork](https://docs.github.com/en/get-started/quickstart/fork-a-repo) the repository
+* [Configure remote](https://help.github.com/en/github/collaborating-with-issues-and-pull-requests/configuring-a-remote-for-a-fork) for the fork
+* `git checkout -b <your_branch>`
+* `git add .`
+* `git commit -m "commit message"`
+* `git push --set-upstream origin <your_branch>`
 * Verify all tests and CI checks pass
 * [Create a pull request](https://help.github.com/en/github/collaborating-with-issues-and-pull-requests/creating-a-pull-request)
 
 ## Code style
 
-The coding style suggested by the Golang community is used in `go-streams`. For details, refer to [style doc](https://github.com/golang/go/wiki/CodeReviewComments).
+* Refer to the [Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments) page for style guidelines
+* Run [golangci-lint](https://golangci-lint.run/) to analyze source code

@@ -9,7 +9,7 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/nats-io/nats.go v1.22.1
 	github.com/nats-io/stan.go v0.10.2
-	github.com/redis/go-redis/v9 v9.0.2
+	github.com/redis/go-redis/v9 v9.0.5
 	github.com/reugn/go-streams v0.9.0
 	github.com/reugn/go-streams/aerospike v0.0.0
 	github.com/reugn/go-streams/kafka v0.0.0

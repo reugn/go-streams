@@ -29,13 +29,15 @@ func main() {
 		DB:       0,                // use default DB
 	}
 
-	source, err := ext.NewRedisSource(ctx, config, "test")
+	redisClient := redis.NewClient(config)
+
+	source, err := ext.NewPubSubSource(ctx, redisClient, "test")
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	toUpperMapFlow := flow.NewMap(toUpper, 1)
-	sink := ext.NewRedisSink(ctx, config, "test2")
+	sink := ext.NewPubSubSink(ctx, redisClient, "test2")
 
 	source.
 		Via(toUpperMapFlow).

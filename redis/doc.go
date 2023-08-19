@@ -1,2 +1,2 @@
-// Package redis implements the Redis Pub/Sub connector.
+// Package redis implements the Redis streaming connectors.
 package redis

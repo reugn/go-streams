@@ -8,7 +8,7 @@ import (
 
 	ext "github.com/reugn/go-streams/kafka"
 
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 	"github.com/reugn/go-streams/flow"
 )
 

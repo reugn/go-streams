@@ -8,7 +8,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 	"github.com/reugn/go-streams"
 	"github.com/reugn/go-streams/flow"
 )

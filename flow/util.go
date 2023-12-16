@@ -40,9 +40,9 @@ func Split[T any](outlet streams.Outlet, predicate func(T) bool) [2]streams.Flow
 // FanOut creates a number of identical flows from the single outlet.
 // This can be useful when writing to multiple sinks is required.
 func FanOut(outlet streams.Outlet, magnitude int) []streams.Flow {
-	var out []streams.Flow
+	out := make([]streams.Flow, magnitude)
 	for i := 0; i < magnitude; i++ {
-		out = append(out, NewPassThrough())
+		out[i] = NewPassThrough()
 	}
 
 	go func() {

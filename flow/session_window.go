@@ -26,17 +26,17 @@ var _ streams.Flow = (*SessionWindow)(nil)
 //
 // inactivityGap is the gap of inactivity that closes a session window when occurred.
 func NewSessionWindow(inactivityGap time.Duration) *SessionWindow {
-	window := &SessionWindow{
+	sessionWindow := &SessionWindow{
 		inactivityGap: inactivityGap,
 		timer:         time.NewTimer(inactivityGap),
 		in:            make(chan interface{}),
 		out:           make(chan interface{}),
 		done:          make(chan struct{}),
 	}
-	go window.emit()
-	go window.receive()
+	go sessionWindow.emit()
+	go sessionWindow.receive()
 
-	return window
+	return sessionWindow
 }
 
 // Via streams data through the given flow
@@ -60,44 +60,55 @@ func (sw *SessionWindow) In() chan<- interface{} {
 	return sw.in
 }
 
-// submit emitted windows to the next Inlet
+// transmit submits closed windows to the next Inlet.
 func (sw *SessionWindow) transmit(inlet streams.Inlet) {
-	for elem := range sw.Out() {
-		inlet.In() <- elem
+	for window := range sw.out {
+		inlet.In() <- window
 	}
 	close(inlet.In())
 }
 
+// receive buffers the incoming elements.
+// It resets the inactivity timer on each new element.
 func (sw *SessionWindow) receive() {
-	for elem := range sw.in {
+	for element := range sw.in {
 		sw.Lock()
-		sw.buffer = append(sw.buffer, elem)
-		sw.timer.Reset(sw.inactivityGap)
+		sw.buffer = append(sw.buffer, element)
+		sw.timer.Reset(sw.inactivityGap) // reset the inactivity timer
 		sw.Unlock()
 	}
 	close(sw.done)
-	close(sw.out)
 }
 
-// emit generates and emits a new window.
+// emit captures and emits a session window based on the gap of inactivity.
+// When this period expires, the current session closes and subsequent elements
+// are assigned to a new session window.
 func (sw *SessionWindow) emit() {
 	defer sw.timer.Stop()
 
 	for {
 		select {
 		case <-sw.timer.C:
-			sw.Lock()
-			windowSlice := sw.buffer
-			sw.buffer = nil
-			sw.Unlock()
-
-			// send the window slice to the out chan
-			if len(windowSlice) > 0 {
-				sw.out <- windowSlice
-			}
+			sw.dispatchWindow()
 
 		case <-sw.done:
+			sw.dispatchWindow()
+			close(sw.out)
 			return
 		}
+	}
+}
+
+// dispatchWindow creates a window from buffered elements and resets the buffer.
+// It sends the slice of elements to the output channel if the window is not empty.
+func (sw *SessionWindow) dispatchWindow() {
+	sw.Lock()
+	windowElements := sw.buffer
+	sw.buffer = nil
+	sw.Unlock()
+
+	// send elements if the window is not empty
+	if len(windowElements) > 0 {
+		sw.out <- windowElements
 	}
 }

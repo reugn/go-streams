@@ -25,16 +25,16 @@ var _ streams.Flow = (*TumblingWindow)(nil)
 //
 // size is the Duration of generated windows.
 func NewTumblingWindow(size time.Duration) *TumblingWindow {
-	window := &TumblingWindow{
+	tumblingWindow := &TumblingWindow{
 		windowSize: size,
 		in:         make(chan interface{}),
 		out:        make(chan interface{}),
 		done:       make(chan struct{}),
 	}
-	go window.receive()
-	go window.emit()
+	go tumblingWindow.receive()
+	go tumblingWindow.emit()
 
-	return window
+	return tumblingWindow
 }
 
 // Via streams data through the given flow
@@ -58,25 +58,25 @@ func (tw *TumblingWindow) In() chan<- interface{} {
 	return tw.in
 }
 
-// submit emitted windows to the next Inlet
+// transmit submits closed windows to the next Inlet.
 func (tw *TumblingWindow) transmit(inlet streams.Inlet) {
-	for elem := range tw.Out() {
-		inlet.In() <- elem
+	for window := range tw.out {
+		inlet.In() <- window
 	}
 	close(inlet.In())
 }
 
+// receive buffers the incoming elements.
 func (tw *TumblingWindow) receive() {
-	for elem := range tw.in {
+	for element := range tw.in {
 		tw.Lock()
-		tw.buffer = append(tw.buffer, elem)
+		tw.buffer = append(tw.buffer, element)
 		tw.Unlock()
 	}
 	close(tw.done)
-	close(tw.out)
 }
 
-// emit generates and emits a new window.
+// emit captures and emits a new window based on the fixed time interval.
 func (tw *TumblingWindow) emit() {
 	ticker := time.NewTicker(tw.windowSize)
 	defer ticker.Stop()
@@ -84,18 +84,26 @@ func (tw *TumblingWindow) emit() {
 	for {
 		select {
 		case <-ticker.C:
-			tw.Lock()
-			windowSlice := tw.buffer
-			tw.buffer = nil
-			tw.Unlock()
-
-			// send the window slice to the out chan
-			if len(windowSlice) > 0 {
-				tw.out <- windowSlice
-			}
+			tw.dispatchWindow()
 
 		case <-tw.done:
+			tw.dispatchWindow()
+			close(tw.out)
 			return
 		}
+	}
+}
+
+// dispatchWindow creates a window from buffered elements and resets the buffer.
+// It sends the slice of elements to the output channel if the window is not empty.
+func (tw *TumblingWindow) dispatchWindow() {
+	tw.Lock()
+	windowElements := tw.buffer
+	tw.buffer = nil
+	tw.Unlock()
+
+	// send elements if the window is not empty
+	if len(windowElements) > 0 {
+		tw.out <- windowElements
 	}
 }

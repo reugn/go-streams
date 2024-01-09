@@ -57,7 +57,7 @@ func NewSlidingWindowWithTSExtractor[T any](
 		return nil, errors.New("slidingInterval is larger than windowSize")
 	}
 
-	window := &SlidingWindow[T]{
+	slidingWindow := &SlidingWindow[T]{
 		windowSize:         windowSize,
 		slidingInterval:    slidingInterval,
 		queue:              &PriorityQueue{},
@@ -66,9 +66,9 @@ func NewSlidingWindowWithTSExtractor[T any](
 		done:               make(chan struct{}),
 		timestampExtractor: timestampExtractor,
 	}
-	go window.receive()
+	go slidingWindow.receive()
 
-	return window, nil
+	return slidingWindow, nil
 }
 
 // Via streams data through the given flow
@@ -94,35 +94,36 @@ func (sw *SlidingWindow[T]) In() chan<- interface{} {
 	return sw.in
 }
 
-// transmit submits newly created windows to the next Inlet.
+// transmit submits closed windows to the next Inlet.
 func (sw *SlidingWindow[T]) transmit(inlet streams.Inlet) {
-	for elem := range sw.Out() {
-		inlet.In() <- elem
+	for window := range sw.out {
+		inlet.In() <- window
 	}
 	close(inlet.In())
 }
 
-// timestamp extracts the timestamp from a record if the timestampExtractor is set.
-// Returns system clock time otherwise.
-func (sw *SlidingWindow[T]) timestamp(elem T) int64 {
+// timestamp extracts the timestamp from an element if the timestampExtractor is set.
+// It returns system clock time otherwise.
+func (sw *SlidingWindow[T]) timestamp(element T) int64 {
 	if sw.timestampExtractor == nil {
 		return util.NowNano()
 	}
-	return sw.timestampExtractor(elem)
+	return sw.timestampExtractor(element)
 }
 
+// receive buffers the incoming elements by pushing them into a priority queue,
+// ordered by their creation time.
 func (sw *SlidingWindow[T]) receive() {
-	for elem := range sw.in {
-		item := &Item{elem, sw.timestamp(elem.(T)), 0}
+	for element := range sw.in {
+		item := &Item{element, sw.timestamp(element.(T)), 0}
 		sw.Lock()
 		heap.Push(sw.queue, item)
 		sw.Unlock()
 	}
 	close(sw.done)
-	close(sw.out)
 }
 
-// emit is triggered by the sliding interval
+// emit captures and emits a new window every sw.slidingInterval.
 func (sw *SlidingWindow[T]) emit() {
 	// wait for the sliding window to start
 	time.Sleep(sw.windowSize - sw.slidingInterval)
@@ -133,48 +134,57 @@ func (sw *SlidingWindow[T]) emit() {
 	for {
 		select {
 		case <-ticker.C:
-			sw.Lock()
-			// build a window slice and send it to the out chan
-			var windowBottomIndex int
-			now := util.NowNano()
-			windowUpperIndex := sw.queue.Len()
-			slideUpperIndex := windowUpperIndex
-			slideUpperTime := now - sw.windowSize.Nanoseconds() + sw.slidingInterval.Nanoseconds()
-			windowBottomTime := now - sw.windowSize.Nanoseconds()
-			for i, item := range *sw.queue {
-				if item.epoch < windowBottomTime {
-					windowBottomIndex = i
-				}
-				if item.epoch > slideUpperTime {
-					slideUpperIndex = i
-					break
-				}
-			}
-			windowSlice := extract(sw.queue.Slice(windowBottomIndex, windowUpperIndex))
-			if windowUpperIndex > 0 { // the queue is not empty
-				s := sw.queue.Slice(slideUpperIndex, windowUpperIndex)
-				// reset the queue
-				sw.queue = &s
-				heap.Init(sw.queue)
-			}
-			sw.Unlock()
-
-			// send window slice to the out chan
-			if len(windowSlice) > 0 {
-				sw.out <- windowSlice
-			}
+			sw.dispatchWindow()
 
 		case <-sw.done:
+			sw.dispatchWindow()
+			close(sw.out)
 			return
 		}
 	}
 }
 
-// extract generates a new window slice out of the given items.
-func extract(items []*Item) []interface{} {
-	messages := make([]interface{}, len(items))
-	for i, item := range items {
-		messages[i] = item.Msg
+// dispatchWindow creates a new window and slides the elements queue.
+// It sends the slice of elements to the output channel if the window is not empty.
+func (sw *SlidingWindow[T]) dispatchWindow() {
+	sw.Lock()
+	// build a window of elements
+	var windowBottomIndex int
+	now := util.NowNano()
+	windowUpperIndex := sw.queue.Len()
+	slideUpperIndex := windowUpperIndex
+	slideUpperTime := now - sw.windowSize.Nanoseconds() + sw.slidingInterval.Nanoseconds()
+	windowBottomTime := now - sw.windowSize.Nanoseconds()
+	for i, item := range *sw.queue {
+		if item.epoch < windowBottomTime {
+			windowBottomIndex = i
+		}
+		if item.epoch > slideUpperTime {
+			slideUpperIndex = i
+			break
+		}
 	}
-	return messages
+	windowElements := extractWindowElements(sw.queue.Slice(windowBottomIndex, windowUpperIndex))
+	if windowUpperIndex > 0 { // the queue is not empty
+		// slice the queue using the lower and upper bounds
+		sliced := sw.queue.Slice(slideUpperIndex, windowUpperIndex)
+		// reset the queue
+		sw.queue = &sliced
+		heap.Init(sw.queue)
+	}
+	sw.Unlock()
+
+	// send elements if the window is not empty
+	if len(windowElements) > 0 {
+		sw.out <- windowElements
+	}
+}
+
+// extractWindowElements generates a window of elements from a given slice of queue items.
+func extractWindowElements(items []*Item) []interface{} {
+	elements := make([]interface{}, len(items))
+	for i, item := range items {
+		elements[i] = item.Msg
+	}
+	return elements
 }

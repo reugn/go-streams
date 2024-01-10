@@ -6,7 +6,6 @@ import (
 	"time"
 
 	ext "github.com/reugn/go-streams/aerospike"
-	"github.com/reugn/go-streams/util"
 
 	aero "github.com/aerospike/aerospike-client-go/v6"
 	"github.com/reugn/go-streams/flow"
@@ -50,7 +49,7 @@ func main() {
 
 var transform = func(msg *aero.Record) ext.AerospikeKeyBins {
 	log.Println(msg.Bins)
-	msg.Bins["ts"] = util.NowNano()
+	msg.Bins["ts"] = time.Now().UnixNano()
 	return ext.AerospikeKeyBins{
 		Key:  msg.Key,
 		Bins: msg.Bins,

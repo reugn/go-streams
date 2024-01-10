@@ -7,7 +7,6 @@ import (
 
 	ext "github.com/reugn/go-streams/extension"
 	"github.com/reugn/go-streams/flow"
-	"github.com/reugn/go-streams/util"
 )
 
 func TestSlidingWindow(t *testing.T) {
@@ -45,8 +44,8 @@ func TestSlidingWindow(t *testing.T) {
 
 	assertEquals(t, []string{"a", "b", "c"}, outputValues[0])
 	assertEquals(t, []string{"b", "c", "d"}, outputValues[1])
-	// assertEquals(t, []string{"c", "d", "e"}, outputValues[2])
-	// assertEquals(t, []string{"d", "e", "f", "g"}, outputValues[3])
+	assertEquals(t, []string{"c", "d", "e"}, outputValues[2])
+	assertEquals(t, []string{"d", "e", "f", "g"}, outputValues[3])
 	assertEquals(t, []string{"f", "g"}, outputValues[4])
 	assertEquals(t, []string{"g"}, outputValues[5])
 }
@@ -74,15 +73,15 @@ func TestSlidingWindowWithExtractor(t *testing.T) {
 
 	sink := ext.NewChanSink(out)
 
-	now := util.NowNano()
+	now := time.Now()
 	inputValues := []element{
-		{"a", now + 2*int64(time.Millisecond)},
-		{"b", now + 17*int64(time.Millisecond)},
-		{"c", now + 29*int64(time.Millisecond)},
-		{"d", now + 35*int64(time.Millisecond)},
-		{"e", now + 77*int64(time.Millisecond)},
-		{"f", now + 93*int64(time.Millisecond)},
-		{"g", now + 120*int64(time.Millisecond)},
+		{"a", now.Add(2 * time.Millisecond).UnixNano()},
+		{"b", now.Add(17 * time.Millisecond).UnixNano()},
+		{"c", now.Add(29 * time.Millisecond).UnixNano()},
+		{"d", now.Add(35 * time.Millisecond).UnixNano()},
+		{"e", now.Add(77 * time.Millisecond).UnixNano()},
+		{"f", now.Add(93 * time.Millisecond).UnixNano()},
+		{"g", now.Add(120 * time.Millisecond).UnixNano()},
 	}
 	go ingestSlice(inputValues, in)
 	go closeDeferred(in, 250*time.Millisecond)

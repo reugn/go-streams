@@ -3,19 +3,19 @@ package flow_test
 import (
 	"container/heap"
 	"testing"
+	"time"
 
 	"github.com/reugn/go-streams/flow"
-	"github.com/reugn/go-streams/util"
 )
 
 func TestQueueOps(t *testing.T) {
 	queue := &flow.PriorityQueue{}
-	heap.Push(queue, flow.NewItem(1, util.NowNano(), 0))
+	heap.Push(queue, flow.NewItem(1, time.Now().UnixNano(), 0))
 	heap.Push(queue, flow.NewItem(2, 1234, 0))
-	heap.Push(queue, flow.NewItem(3, util.NowNano(), 0))
+	heap.Push(queue, flow.NewItem(3, time.Now().UnixNano(), 0))
 	queue.Swap(0, 1)
 	head := queue.Head()
-	queue.Update(head, util.NowNano())
+	queue.Update(head, time.Now().UnixNano())
 	first := heap.Pop(queue).(*flow.Item)
 
 	assertEquals(t, 2, first.Msg.(int))

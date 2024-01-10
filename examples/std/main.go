@@ -38,7 +38,7 @@ func tickerChan(repeat time.Duration) chan interface{} {
 	nc := make(chan interface{})
 	go func() {
 		for range oc {
-			nc <- &message{strconv.FormatInt(time.Now().UTC().UnixNano(), 10)}
+			nc <- &message{strconv.FormatInt(time.Now().UnixNano(), 10)}
 		}
 	}()
 	return nc

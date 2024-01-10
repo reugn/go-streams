@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/reugn/go-streams"
-	"github.com/reugn/go-streams/util"
 )
 
 // SlidingWindow assigns elements to windows of fixed length configured by the window
@@ -106,7 +105,7 @@ func (sw *SlidingWindow[T]) transmit(inlet streams.Inlet) {
 // It returns system clock time otherwise.
 func (sw *SlidingWindow[T]) timestamp(element T) int64 {
 	if sw.timestampExtractor == nil {
-		return util.NowNano()
+		return time.Now().UnixNano()
 	}
 	return sw.timestampExtractor(element)
 }
@@ -128,16 +127,17 @@ func (sw *SlidingWindow[T]) emit() {
 	// wait for the sliding window to start
 	time.Sleep(sw.windowSize - sw.slidingInterval)
 
+	lastTick := time.Now()
 	ticker := time.NewTicker(sw.slidingInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-ticker.C:
-			sw.dispatchWindow()
+		case lastTick = <-ticker.C:
+			sw.dispatchWindow(lastTick)
 
 		case <-sw.done:
-			sw.dispatchWindow()
+			sw.dispatchWindow(lastTick.Add(sw.slidingInterval))
 			close(sw.out)
 			return
 		}
@@ -146,11 +146,11 @@ func (sw *SlidingWindow[T]) emit() {
 
 // dispatchWindow creates a new window and slides the elements queue.
 // It sends the slice of elements to the output channel if the window is not empty.
-func (sw *SlidingWindow[T]) dispatchWindow() {
+func (sw *SlidingWindow[T]) dispatchWindow(tick time.Time) {
 	sw.Lock()
 	// build a window of elements
 	var windowBottomIndex int
-	now := util.NowNano()
+	now := tick.UnixNano()
 	windowUpperIndex := sw.queue.Len()
 	slideUpperIndex := windowUpperIndex
 	slideUpperTime := now - sw.windowSize.Nanoseconds() + sw.slidingInterval.Nanoseconds()

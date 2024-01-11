@@ -10,11 +10,11 @@ import (
 )
 
 func TestBatch(t *testing.T) {
-	in := make(chan interface{})
-	out := make(chan interface{})
+	in := make(chan any)
+	out := make(chan any)
 
 	source := ext.NewChanSource(in)
-	batch := flow.NewBatch(4, 40*time.Millisecond)
+	batch := flow.NewBatch[string](4, 40*time.Millisecond)
 	sink := ext.NewChanSink(out)
 
 	inputValues := []string{"a", "b", "c", "d", "e", "f", "g"}
@@ -29,18 +29,19 @@ func TestBatch(t *testing.T) {
 	go func() {
 		source.
 			Via(batch).
+			Via(flow.NewMap(retransmitStringSlice, 1)). // test generic return type
 			To(sink)
 	}()
 
-	var outputValues [][]interface{}
+	var outputValues [][]string
 	for e := range sink.Out {
-		outputValues = append(outputValues, e.([]interface{}))
+		outputValues = append(outputValues, e.([]string))
 	}
 	fmt.Println(outputValues)
 
 	assertEquals(t, 3, len(outputValues)) // [[a b c d] [e f g] [h]]
 
-	assertEquals(t, []interface{}{"a", "b", "c", "d"}, outputValues[0])
-	assertEquals(t, []interface{}{"e", "f", "g"}, outputValues[1])
-	assertEquals(t, []interface{}{"h"}, outputValues[2])
+	assertEquals(t, []string{"a", "b", "c", "d"}, outputValues[0])
+	assertEquals(t, []string{"e", "f", "g"}, outputValues[1])
+	assertEquals(t, []string{"h"}, outputValues[2])
 }

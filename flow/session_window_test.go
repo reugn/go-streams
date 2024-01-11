@@ -10,11 +10,11 @@ import (
 )
 
 func TestSessionWindow(t *testing.T) {
-	in := make(chan interface{})
-	out := make(chan interface{})
+	in := make(chan any)
+	out := make(chan any)
 
 	source := ext.NewChanSource(in)
-	sessionWindow := flow.NewSessionWindow(20 * time.Millisecond)
+	sessionWindow := flow.NewSessionWindow[string](20 * time.Millisecond)
 	sink := ext.NewChanSink(out)
 
 	inputValues := []string{"a", "b", "c"}
@@ -26,28 +26,29 @@ func TestSessionWindow(t *testing.T) {
 	go func() {
 		source.
 			Via(sessionWindow).
+			Via(flow.NewMap(retransmitStringSlice, 1)). // test generic return type
 			To(sink)
 	}()
 
-	var outputValues [][]interface{}
+	var outputValues [][]string
 	for e := range sink.Out {
-		outputValues = append(outputValues, e.([]interface{}))
+		outputValues = append(outputValues, e.([]string))
 	}
 	fmt.Println(outputValues)
 
 	assertEquals(t, 3, len(outputValues)) // [[a b c] [d] [e]]
 
-	assertEquals(t, []interface{}{"a", "b", "c"}, outputValues[0])
-	assertEquals(t, []interface{}{"d"}, outputValues[1])
-	assertEquals(t, []interface{}{"e"}, outputValues[2])
+	assertEquals(t, []string{"a", "b", "c"}, outputValues[0])
+	assertEquals(t, []string{"d"}, outputValues[1])
+	assertEquals(t, []string{"e"}, outputValues[2])
 }
 
 func TestLongSessionWindow(t *testing.T) {
-	in := make(chan interface{})
-	out := make(chan interface{})
+	in := make(chan any)
+	out := make(chan any)
 
 	source := ext.NewChanSource(in)
-	sessionWindow := flow.NewSessionWindow(20 * time.Millisecond)
+	sessionWindow := flow.NewSessionWindow[string](20 * time.Millisecond)
 	sink := ext.NewChanSink(out)
 
 	inputValues := []string{"a", "b", "c", "d", "e", "f", "g"}
@@ -65,14 +66,14 @@ func TestLongSessionWindow(t *testing.T) {
 			To(sink)
 	}()
 
-	var outputValues [][]interface{}
+	var outputValues [][]string
 	for e := range sink.Out {
-		outputValues = append(outputValues, e.([]interface{}))
+		outputValues = append(outputValues, e.([]string))
 	}
 	fmt.Println(outputValues)
 
 	assertEquals(t, 2, len(outputValues)) // [[a b c d e f g] [h]]
 
-	assertEquals(t, []interface{}{"a", "b", "c", "d", "e", "f", "g"}, outputValues[0])
-	assertEquals(t, []interface{}{"h"}, outputValues[1])
+	assertEquals(t, []string{"a", "b", "c", "d", "e", "f", "g"}, outputValues[0])
+	assertEquals(t, []string{"h"}, outputValues[1])
 }

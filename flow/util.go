@@ -18,6 +18,7 @@ func DoStream(outlet streams.Outlet, inlet streams.Inlet) {
 }
 
 // Split splits the stream into two flows according to the given boolean predicate.
+// T specifies the incoming and outgoing element type.
 func Split[T any](outlet streams.Outlet, predicate func(T) bool) [2]streams.Flow {
 	condTrue := NewPassThrough()
 	condFalse := NewPassThrough()
@@ -101,8 +102,9 @@ func Merge(outlets ...streams.Flow) streams.Flow {
 }
 
 // Flatten creates a Flow to flatten the stream of slices.
-func Flatten(parallelism uint) streams.Flow {
-	return NewFlatMap(func(element []any) []any {
+// T specifies the outgoing element type, and the incoming element type is []T.
+func Flatten[T any](parallelism uint) streams.Flow {
+	return NewFlatMap(func(element []T) []T {
 		return element
 	}, parallelism)
 }

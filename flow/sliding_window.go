@@ -14,13 +14,14 @@ import (
 // An additional window slide parameter controls how frequently a sliding window is started.
 // Hence, sliding windows can be overlapping if the slide is smaller than the window size.
 // In this case elements are assigned to multiple windows.
+// T indicates the incoming element type, and the outgoing element type is []T.
 type SlidingWindow[T any] struct {
 	sync.Mutex
 	windowSize         time.Duration
 	slidingInterval    time.Duration
 	queue              *PriorityQueue
-	in                 chan interface{}
-	out                chan interface{}
+	in                 chan any
+	out                chan any
 	done               chan struct{}
 	timestampExtractor func(T) int64
 }
@@ -31,18 +32,20 @@ var _ streams.Flow = (*SlidingWindow[any])(nil)
 // NewSlidingWindow returns a new processing time based SlidingWindow.
 // Processing time refers to the system time of the machine that is executing the
 // respective operation.
+// T specifies the incoming element type, and the outgoing element type is []T.
 //
 // windowSize is the Duration of generated windows.
 // slidingInterval is the sliding interval of generated windows.
-func NewSlidingWindow(
+func NewSlidingWindow[T any](
 	windowSize time.Duration,
-	slidingInterval time.Duration) (*SlidingWindow[any], error) {
-	return NewSlidingWindowWithTSExtractor[any](windowSize, slidingInterval, nil)
+	slidingInterval time.Duration) (*SlidingWindow[T], error) {
+	return NewSlidingWindowWithTSExtractor[T](windowSize, slidingInterval, nil)
 }
 
 // NewSlidingWindowWithTSExtractor returns a new event time based SlidingWindow.
 // Event time is the time that each individual event occurred on its producing device.
 // Gives correct results on out-of-order events, late events, or on replays of data.
+// T specifies the incoming element type, and the outgoing element type is []T.
 //
 // windowSize is the Duration of generated windows.
 // slidingInterval is the sliding interval of generated windows.
@@ -60,8 +63,8 @@ func NewSlidingWindowWithTSExtractor[T any](
 		windowSize:         windowSize,
 		slidingInterval:    slidingInterval,
 		queue:              &PriorityQueue{},
-		in:                 make(chan interface{}),
-		out:                make(chan interface{}),
+		in:                 make(chan any),
+		out:                make(chan any),
 		done:               make(chan struct{}),
 		timestampExtractor: timestampExtractor,
 	}
@@ -70,26 +73,26 @@ func NewSlidingWindowWithTSExtractor[T any](
 	return slidingWindow, nil
 }
 
-// Via streams data through the given flow
+// Via streams data to a specified Flow and returns it.
 func (sw *SlidingWindow[T]) Via(flow streams.Flow) streams.Flow {
 	go sw.emit()
 	go sw.transmit(flow)
 	return flow
 }
 
-// To streams data to the given sink
+// To streams data to a specified Sink.
 func (sw *SlidingWindow[T]) To(sink streams.Sink) {
 	go sw.emit()
 	sw.transmit(sink)
 }
 
-// Out returns an output channel for sending data
-func (sw *SlidingWindow[T]) Out() <-chan interface{} {
+// Out returns the output channel of the SlidingWindow.
+func (sw *SlidingWindow[T]) Out() <-chan any {
 	return sw.out
 }
 
-// In returns an input channel for receiving data
-func (sw *SlidingWindow[T]) In() chan<- interface{} {
+// In returns the input channel of the SlidingWindow.
+func (sw *SlidingWindow[T]) In() chan<- any {
 	return sw.in
 }
 
@@ -164,7 +167,7 @@ func (sw *SlidingWindow[T]) dispatchWindow(tick time.Time) {
 			break
 		}
 	}
-	windowElements := extractWindowElements(sw.queue.Slice(windowBottomIndex, windowUpperIndex))
+	windowElements := extractWindowElements[T](sw.queue.Slice(windowBottomIndex, windowUpperIndex))
 	if windowUpperIndex > 0 { // the queue is not empty
 		// slice the queue using the lower and upper bounds
 		sliced := sw.queue.Slice(slideUpperIndex, windowUpperIndex)
@@ -181,10 +184,10 @@ func (sw *SlidingWindow[T]) dispatchWindow(tick time.Time) {
 }
 
 // extractWindowElements generates a window of elements from a given slice of queue items.
-func extractWindowElements(items []*Item) []interface{} {
-	elements := make([]interface{}, len(items))
+func extractWindowElements[T any](items []*Item) []T {
+	elements := make([]T, len(items))
 	for i, item := range items {
-		elements[i] = item.Msg
+		elements[i] = item.Msg.(T)
 	}
 	return elements
 }

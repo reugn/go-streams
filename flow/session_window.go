@@ -12,9 +12,9 @@ import (
 type SessionWindow struct {
 	sync.Mutex
 	inactivityGap time.Duration
-	timer         *time.Timer
 	in            chan interface{}
 	out           chan interface{}
+	reset         chan struct{}
 	done          chan struct{}
 	buffer        []interface{}
 }
@@ -28,9 +28,9 @@ var _ streams.Flow = (*SessionWindow)(nil)
 func NewSessionWindow(inactivityGap time.Duration) *SessionWindow {
 	sessionWindow := &SessionWindow{
 		inactivityGap: inactivityGap,
-		timer:         time.NewTimer(inactivityGap),
 		in:            make(chan interface{}),
 		out:           make(chan interface{}),
+		reset:         make(chan struct{}),
 		done:          make(chan struct{}),
 	}
 	go sessionWindow.emit()
@@ -74,24 +74,41 @@ func (sw *SessionWindow) receive() {
 	for element := range sw.in {
 		sw.Lock()
 		sw.buffer = append(sw.buffer, element)
-		sw.timer.Reset(sw.inactivityGap) // reset the inactivity timer
 		sw.Unlock()
+		sw.notifyTimerReset() // signal to reset the inactivity timer
 	}
 	close(sw.done)
+}
+
+// notifyTimerReset sends a notification to reset the inactivity timer.
+func (sw *SessionWindow) notifyTimerReset() {
+	select {
+	case sw.reset <- struct{}{}:
+	default:
+	}
 }
 
 // emit captures and emits a session window based on the gap of inactivity.
 // When this period expires, the current session closes and subsequent elements
 // are assigned to a new session window.
 func (sw *SessionWindow) emit() {
-	defer sw.timer.Stop()
-
+	timer := time.NewTimer(sw.inactivityGap)
 	for {
 		select {
-		case <-sw.timer.C:
+		case <-timer.C:
 			sw.dispatchWindow()
 
+		case <-sw.reset:
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer.Reset(sw.inactivityGap)
+
 		case <-sw.done:
+			timer.Stop()
 			sw.dispatchWindow()
 			close(sw.out)
 			return

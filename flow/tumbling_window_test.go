@@ -10,11 +10,11 @@ import (
 )
 
 func TestTumblingWindow(t *testing.T) {
-	in := make(chan interface{})
-	out := make(chan interface{})
+	in := make(chan any)
+	out := make(chan any)
 
 	source := ext.NewChanSource(in)
-	slidingWindow := flow.NewTumblingWindow(50 * time.Millisecond)
+	tumblingWindow := flow.NewTumblingWindow[string](50 * time.Millisecond)
 	sink := ext.NewChanSink(out)
 
 	go func() {
@@ -27,19 +27,20 @@ func TestTumblingWindow(t *testing.T) {
 
 	go func() {
 		source.
-			Via(slidingWindow).
+			Via(tumblingWindow).
+			Via(flow.NewMap(retransmitStringSlice, 1)). // test generic return type
 			To(sink)
 	}()
 
-	var outputValues [][]interface{}
+	var outputValues [][]string
 	for e := range sink.Out {
-		outputValues = append(outputValues, e.([]interface{}))
+		outputValues = append(outputValues, e.([]string))
 	}
 	fmt.Println(outputValues)
 
 	assertEquals(t, 3, len(outputValues)) // [[a b c] [d e f] [g]]
 
-	assertEquals(t, []interface{}{"a", "b", "c"}, outputValues[0])
-	assertEquals(t, []interface{}{"d", "e", "f"}, outputValues[1])
-	assertEquals(t, []interface{}{"g"}, outputValues[2])
+	assertEquals(t, []string{"a", "b", "c"}, outputValues[0])
+	assertEquals(t, []string{"d", "e", "f"}, outputValues[1])
+	assertEquals(t, []string{"g"}, outputValues[2])
 }

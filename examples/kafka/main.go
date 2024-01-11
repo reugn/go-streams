@@ -16,7 +16,7 @@ func main() {
 	hosts := []string{"127.0.0.1:9092"}
 	ctx := context.Background()
 	config := sarama.NewConfig()
-	config.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategyRoundRobin
+	config.Consumer.Group.Rebalance.Strategy = sarama.NewBalanceStrategyRoundRobin()
 	config.Consumer.Offsets.Initial = sarama.OffsetNewest
 	config.Producer.Return.Successes = true
 	config.Version, _ = sarama.ParseKafkaVersion("2.8.1")
@@ -35,7 +35,7 @@ func main() {
 	}
 
 	throttler := flow.NewThrottler(1, time.Second, 50, flow.Discard)
-	tumblingWindow := flow.NewTumblingWindow(time.Second * 5)
+	tumblingWindow := flow.NewTumblingWindow[*sarama.ConsumerMessage](time.Second * 5)
 
 	source.
 		Via(toUpperMapFlow).

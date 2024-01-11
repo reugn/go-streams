@@ -10,11 +10,11 @@ import (
 )
 
 func TestSlidingWindow(t *testing.T) {
-	in := make(chan interface{})
-	out := make(chan interface{})
+	in := make(chan any)
+	out := make(chan any)
 
 	source := ext.NewChanSource(in)
-	slidingWindow, err := flow.NewSlidingWindow(50*time.Millisecond, 20*time.Millisecond)
+	slidingWindow, err := flow.NewSlidingWindow[string](50*time.Millisecond, 20*time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,12 +31,13 @@ func TestSlidingWindow(t *testing.T) {
 	go func() {
 		source.
 			Via(slidingWindow).
+			Via(flow.NewMap(retransmitStringSlice, 1)). // test generic return type
 			To(sink)
 	}()
 
 	var outputValues [][]string
 	for e := range sink.Out {
-		outputValues = append(outputValues, stringValues(e.([]interface{})))
+		outputValues = append(outputValues, e.([]string))
 	}
 	fmt.Println(outputValues)
 
@@ -56,8 +57,8 @@ type element struct {
 }
 
 func TestSlidingWindowWithExtractor(t *testing.T) {
-	in := make(chan interface{})
-	out := make(chan interface{})
+	in := make(chan any)
+	out := make(chan any)
 
 	source := ext.NewChanSource(in)
 	slidingWindow, err := flow.NewSlidingWindowWithTSExtractor(
@@ -94,7 +95,7 @@ func TestSlidingWindowWithExtractor(t *testing.T) {
 
 	var outputValues [][]string
 	for e := range sink.Out {
-		outputValues = append(outputValues, stringValues(e.([]interface{})))
+		outputValues = append(outputValues, stringValues(e.([]element)))
 	}
 	fmt.Println(outputValues)
 
@@ -108,21 +109,16 @@ func TestSlidingWindowWithExtractor(t *testing.T) {
 	assertEquals(t, []string{"g"}, outputValues[5])
 }
 
-func stringValues(elements []interface{}) []string {
+func stringValues(elements []element) []string {
 	values := make([]string, len(elements))
 	for i, e := range elements {
-		switch v := e.(type) {
-		case string:
-			values[i] = v
-		case element:
-			values[i] = v.value
-		}
+		values[i] = e.value
 	}
 	return values
 }
 
 func TestSlidingWindowInvalidParameters(t *testing.T) {
-	slidingWindow, err := flow.NewSlidingWindow(10*time.Millisecond, 20*time.Millisecond)
+	slidingWindow, err := flow.NewSlidingWindow[string](10*time.Millisecond, 20*time.Millisecond)
 	if slidingWindow != nil {
 		t.Fatal("slidingWindow should be nil")
 	}

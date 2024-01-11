@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -26,31 +27,43 @@ var reduceSum = func(a int, b int) int {
 	return a + b
 }
 
-func ingestSlice[T any](source []T, in chan interface{}) {
+var retransmitStringSlice = func(in []string) []string {
+	return in
+}
+
+var mtx sync.Mutex
+
+func ingestSlice[T any](source []T, in chan any) {
+	mtx.Lock()
+	defer mtx.Unlock()
 	for _, e := range source {
 		in <- e
 	}
 }
 
-func ingestDeferred[T any](item T, in chan interface{}, wait time.Duration) {
+func ingestDeferred[T any](item T, in chan any, wait time.Duration) {
 	time.Sleep(wait)
+	mtx.Lock()
+	defer mtx.Unlock()
 	in <- item
 }
 
 func closeDeferred[T any](in chan T, wait time.Duration) {
 	time.Sleep(wait)
+	mtx.Lock()
+	defer mtx.Unlock()
 	close(in)
 }
 
 func TestComplexFlow(t *testing.T) {
-	in := make(chan interface{})
-	out := make(chan interface{})
+	in := make(chan any)
+	out := make(chan any)
 
 	source := ext.NewChanSource(in)
 	toUpperMapFlow := flow.NewMap(strings.ToUpper, 1)
 	appendAsteriskFlatMapFlow := flow.NewFlatMap(addAsterisk, 1)
 	throttler := flow.NewThrottler(10, 200*time.Millisecond, 50, flow.Backpressure)
-	tumblingWindow := flow.NewTumblingWindow(200 * time.Millisecond)
+	tumblingWindow := flow.NewTumblingWindow[string](200 * time.Millisecond)
 	filterFlow := flow.NewFilter(filterNotContainsA, 1)
 	sink := ext.NewChanSink(out)
 
@@ -63,7 +76,7 @@ func TestComplexFlow(t *testing.T) {
 			Via(toUpperMapFlow).
 			Via(appendAsteriskFlatMapFlow).
 			Via(tumblingWindow).
-			Via(flow.Flatten(1)).
+			Via(flow.Flatten[string](1)).
 			Via(throttler).
 			Via(filterFlow).
 			To(sink)
@@ -79,8 +92,8 @@ func TestComplexFlow(t *testing.T) {
 }
 
 func TestSplitFlow(t *testing.T) {
-	in := make(chan interface{}, 3)
-	out := make(chan interface{}, 3)
+	in := make(chan any, 3)
+	out := make(chan any, 3)
 
 	source := ext.NewChanSource(in)
 	toUpperMapFlow := flow.NewMap(strings.ToUpper, 1)
@@ -108,8 +121,8 @@ func TestSplitFlow(t *testing.T) {
 }
 
 func TestFanOutFlow(t *testing.T) {
-	in := make(chan interface{})
-	out := make(chan interface{})
+	in := make(chan any)
+	out := make(chan any)
 
 	source := ext.NewChanSource(in)
 	filterFlow := flow.NewFilter(filterNotContainsA, 1)
@@ -141,8 +154,8 @@ func TestFanOutFlow(t *testing.T) {
 }
 
 func TestRoundRobinFlow(t *testing.T) {
-	in := make(chan interface{})
-	out := make(chan interface{})
+	in := make(chan any)
+	out := make(chan any)
 
 	source := ext.NewChanSource(in)
 	filterFlow := flow.NewFilter(filterNotContainsA, 1)
@@ -174,8 +187,8 @@ func TestRoundRobinFlow(t *testing.T) {
 }
 
 func TestReduceFlow(t *testing.T) {
-	in := make(chan interface{}, 5)
-	out := make(chan interface{}, 5)
+	in := make(chan any, 5)
+	out := make(chan any, 5)
 
 	source := ext.NewChanSource(in)
 	reduceFlow := flow.NewReduce(reduceSum)

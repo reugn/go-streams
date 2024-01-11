@@ -9,26 +9,28 @@ import (
 
 // TumblingWindow assigns each element to a window of a specified window size.
 // Tumbling windows have a fixed size and do not overlap.
-type TumblingWindow struct {
+// T indicates the incoming element type, and the outgoing element type is []T.
+type TumblingWindow[T any] struct {
 	sync.Mutex
 	windowSize time.Duration
-	in         chan interface{}
-	out        chan interface{}
+	in         chan any
+	out        chan any
 	done       chan struct{}
-	buffer     []interface{}
+	buffer     []T
 }
 
 // Verify TumblingWindow satisfies the Flow interface.
-var _ streams.Flow = (*TumblingWindow)(nil)
+var _ streams.Flow = (*TumblingWindow[any])(nil)
 
 // NewTumblingWindow returns a new TumblingWindow instance.
+// T specifies the incoming element type, and the outgoing element type is []T.
 //
 // size is the Duration of generated windows.
-func NewTumblingWindow(size time.Duration) *TumblingWindow {
-	tumblingWindow := &TumblingWindow{
+func NewTumblingWindow[T any](size time.Duration) *TumblingWindow[T] {
+	tumblingWindow := &TumblingWindow[T]{
 		windowSize: size,
-		in:         make(chan interface{}),
-		out:        make(chan interface{}),
+		in:         make(chan any),
+		out:        make(chan any),
 		done:       make(chan struct{}),
 	}
 	go tumblingWindow.receive()
@@ -37,29 +39,29 @@ func NewTumblingWindow(size time.Duration) *TumblingWindow {
 	return tumblingWindow
 }
 
-// Via streams data through the given flow
-func (tw *TumblingWindow) Via(flow streams.Flow) streams.Flow {
+// Via streams data to a specified Flow and returns it.
+func (tw *TumblingWindow[T]) Via(flow streams.Flow) streams.Flow {
 	go tw.transmit(flow)
 	return flow
 }
 
-// To streams data to the given sink
-func (tw *TumblingWindow) To(sink streams.Sink) {
+// To streams data to a specified Sink.
+func (tw *TumblingWindow[T]) To(sink streams.Sink) {
 	tw.transmit(sink)
 }
 
-// Out returns an output channel for sending data
-func (tw *TumblingWindow) Out() <-chan interface{} {
+// Out returns the output channel of the TumblingWindow.
+func (tw *TumblingWindow[T]) Out() <-chan any {
 	return tw.out
 }
 
-// In returns an input channel for receiving data
-func (tw *TumblingWindow) In() chan<- interface{} {
+// In returns the input channel of the TumblingWindow.
+func (tw *TumblingWindow[T]) In() chan<- any {
 	return tw.in
 }
 
 // transmit submits closed windows to the next Inlet.
-func (tw *TumblingWindow) transmit(inlet streams.Inlet) {
+func (tw *TumblingWindow[T]) transmit(inlet streams.Inlet) {
 	for window := range tw.out {
 		inlet.In() <- window
 	}
@@ -67,17 +69,17 @@ func (tw *TumblingWindow) transmit(inlet streams.Inlet) {
 }
 
 // receive buffers the incoming elements.
-func (tw *TumblingWindow) receive() {
+func (tw *TumblingWindow[T]) receive() {
 	for element := range tw.in {
 		tw.Lock()
-		tw.buffer = append(tw.buffer, element)
+		tw.buffer = append(tw.buffer, element.(T))
 		tw.Unlock()
 	}
 	close(tw.done)
 }
 
 // emit captures and emits a new window based on the fixed time interval.
-func (tw *TumblingWindow) emit() {
+func (tw *TumblingWindow[T]) emit() {
 	ticker := time.NewTicker(tw.windowSize)
 	defer ticker.Stop()
 
@@ -96,7 +98,7 @@ func (tw *TumblingWindow) emit() {
 
 // dispatchWindow creates a window from buffered elements and resets the buffer.
 // It sends the slice of elements to the output channel if the window is not empty.
-func (tw *TumblingWindow) dispatchWindow() {
+func (tw *TumblingWindow[T]) dispatchWindow() {
 	tw.Lock()
 	windowElements := tw.buffer
 	tw.buffer = nil

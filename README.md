@@ -16,7 +16,7 @@ Building blocks:
 * Flow - A Flow is a set of stream processing steps that has one open input and one open output. 
 * Sink - A Sink is a set of stream processing steps that has one open input. Can be used as a Subscriber.
 
-Flow capabilities ([flow](https://github.com/reugn/go-streams/tree/master/flow) package):  
+Implemented Flows ([flow](https://github.com/reugn/go-streams/tree/master/flow) package):  
 * Map
 * FlatMap
 * Filter
@@ -27,6 +27,7 @@ Flow capabilities ([flow](https://github.com/reugn/go-streams/tree/master/flow) 
 * RoundRobin
 * Merge
 * Flatten
+* Batch
 * Throttler
 * SlidingWindow
 * TumblingWindow

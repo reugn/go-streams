@@ -26,7 +26,8 @@ type Filter[T any] struct {
 // Verify Filter satisfies the Flow interface.
 var _ streams.Flow = (*Filter[any])(nil)
 
-// NewFilter returns a new Filter instance.
+// NewFilter returns a new Filter operator.
+// T specifies the incoming and the outgoing element type.
 //
 // filterPredicate is the boolean-valued filter function.
 // parallelism is the flow parallelism factor. In case the events order matters, use parallelism = 1.
@@ -42,23 +43,23 @@ func NewFilter[T any](filterPredicate FilterPredicate[T], parallelism uint) *Fil
 	return filter
 }
 
-// Via streams data through the given flow
+// Via streams data to a specified Flow and returns it.
 func (f *Filter[T]) Via(flow streams.Flow) streams.Flow {
 	go f.transmit(flow)
 	return flow
 }
 
-// To streams data to the given sink
+// To streams data to a specified Sink.
 func (f *Filter[T]) To(sink streams.Sink) {
 	f.transmit(sink)
 }
 
-// Out returns an output channel for sending data
+// Out returns the output channel of the Filter operator.
 func (f *Filter[T]) Out() <-chan any {
 	return f.out
 }
 
-// In returns an input channel for receiving data
+// In returns the input channel of the Filter operator.
 func (f *Filter[T]) In() chan<- any {
 	return f.in
 }

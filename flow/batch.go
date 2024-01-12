@@ -21,7 +21,7 @@ type Batch[T any] struct {
 // Verify Batch satisfies the Flow interface.
 var _ streams.Flow = (*Batch[any])(nil)
 
-// NewBatch returns a new Batch instance using the specified maximum batch size and the
+// NewBatch returns a new Batch operator using the specified maximum batch size and the
 // time interval.
 // T specifies the incoming element type, and the outgoing element type is []T.
 // NewBatch will panic if the maxBatchSize argument is not positive.
@@ -51,12 +51,12 @@ func (b *Batch[T]) To(sink streams.Sink) {
 	b.transmit(sink)
 }
 
-// Out returns the output channel of the Batch.
+// Out returns the output channel of the Batch operator.
 func (b *Batch[T]) Out() <-chan any {
 	return b.out
 }
 
-// In returns the input channel of the Batch.
+// In returns the input channel of the Batch operator.
 func (b *Batch[T]) In() chan<- any {
 	return b.in
 }

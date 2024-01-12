@@ -1,14 +1,20 @@
 package extension
 
-import "fmt"
+import (
+	"fmt"
 
-// StdoutSink represents a simple outbound connector that sends incoming
-// items to standard output.
+	"github.com/reugn/go-streams"
+)
+
+// StdoutSink represents a simple outbound connector that writes
+// streaming data to standard output.
 type StdoutSink struct {
 	in chan any
 }
 
-// NewStdoutSink returns a new StdoutSink instance.
+var _ streams.Sink = (*StdoutSink)(nil)
+
+// NewStdoutSink returns a new StdoutSink connector.
 func NewStdoutSink() *StdoutSink {
 	sink := &StdoutSink{
 		in: make(chan any),
@@ -26,18 +32,20 @@ func (stdout *StdoutSink) init() {
 	}()
 }
 
-// In returns an input channel for receiving data
+// In returns the input channel of the StdoutSink connector.
 func (stdout *StdoutSink) In() chan<- any {
 	return stdout.in
 }
 
 // IgnoreSink represents a simple outbound connector that discards
-// all of the incoming items.
+// all elements of a stream.
 type IgnoreSink struct {
 	in chan any
 }
 
-// NewIgnoreSink returns a new IgnoreSink instance.
+var _ streams.Sink = (*IgnoreSink)(nil)
+
+// NewIgnoreSink returns a new IgnoreSink connector.
 func NewIgnoreSink() *IgnoreSink {
 	sink := &IgnoreSink{
 		in: make(chan any),
@@ -58,7 +66,7 @@ func (ignore *IgnoreSink) init() {
 	}()
 }
 
-// In returns an input channel for receiving data
+// In returns the input channel of the IgnoreSink connector.
 func (ignore *IgnoreSink) In() chan<- any {
 	return ignore.in
 }

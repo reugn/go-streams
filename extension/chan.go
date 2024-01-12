@@ -5,38 +5,44 @@ import (
 	"github.com/reugn/go-streams/flow"
 )
 
-// ChanSource represents an inbound connector that streams items from a channel.
+// ChanSource represents an inbound connector that creates a stream of
+// elements from a channel.
 type ChanSource struct {
 	in chan any
 }
 
-// NewChanSource returns a new ChanSource instance
+var _ streams.Source = (*ChanSource)(nil)
+
+// NewChanSource returns a new ChanSource connector.
 func NewChanSource(in chan any) *ChanSource {
 	return &ChanSource{in}
 }
 
-// Via streams data through the given flow
-func (cs *ChanSource) Via(_flow streams.Flow) streams.Flow {
-	flow.DoStream(cs, _flow)
-	return _flow
+// Via streams data to a specified operator and returns it.
+func (cs *ChanSource) Via(operator streams.Flow) streams.Flow {
+	flow.DoStream(cs, operator)
+	return operator
 }
 
-// Out returns an output channel for sending data
+// Out returns the output channel of the ChanSource connector.
 func (cs *ChanSource) Out() <-chan any {
 	return cs.in
 }
 
-// ChanSink represents an outbound connector that streams items to a channel.
+// ChanSink represents an outbound connector that writes streaming data
+// to a channel.
 type ChanSink struct {
 	Out chan any
 }
 
-// NewChanSink returns a new ChanSink instance
+var _ streams.Sink = (*ChanSink)(nil)
+
+// NewChanSink returns a new ChanSink connector.
 func NewChanSink(out chan any) *ChanSink {
 	return &ChanSink{out}
 }
 
-// In returns an input channel for receiving data
+// In returns the input channel of the ChanSink connector.
 func (ch *ChanSink) In() chan<- any {
 	return ch.Out
 }

@@ -10,13 +10,16 @@ import (
 	"github.com/reugn/go-streams/util/ospkg"
 )
 
-// FileSource represents an inbound connector that reads items from a file.
+// FileSource represents an inbound connector that creates a stream of
+// elements from a file. The streaming element is a new line in the file.
 type FileSource struct {
 	fileName string
 	in       chan any
 }
 
-// NewFileSource returns a new FileSource instance.
+var _ streams.Source = (*FileSource)(nil)
+
+// NewFileSource returns a new FileSource connector.
 func NewFileSource(fileName string) *FileSource {
 	source := &FileSource{
 		fileName: fileName,
@@ -35,42 +38,45 @@ func (fs *FileSource) init() {
 		defer file.Close()
 		reader := bufio.NewReader(file)
 		for {
-			l, isPrefix, err := reader.ReadLine()
+			lineBytes, isPrefix, err := reader.ReadLine()
 			if err != nil {
 				close(fs.in)
 				break
 			}
 
-			var msg string
+			var element string
 			if isPrefix {
-				msg = string(l)
+				element = string(lineBytes)
 			} else {
-				msg = string(l) + ospkg.NewLine
+				element = string(lineBytes) + ospkg.NewLine
 			}
 
-			fs.in <- msg
+			fs.in <- element
 		}
 	}()
 }
 
-// Via streams data through the given flow
-func (fs *FileSource) Via(_flow streams.Flow) streams.Flow {
-	flow.DoStream(fs, _flow)
-	return _flow
+// Via streams data to a specified operator and returns it.
+func (fs *FileSource) Via(operator streams.Flow) streams.Flow {
+	flow.DoStream(fs, operator)
+	return operator
 }
 
-// Out returns an output channel for sending data
+// Out returns the output channel of the FileSource connector.
 func (fs *FileSource) Out() <-chan any {
 	return fs.in
 }
 
-// FileSink represents an outbound connector that writes items to a file.
+// FileSink represents an outbound connector that writes streaming data
+// to a file.
 type FileSink struct {
 	fileName string
 	in       chan any
 }
 
-// NewFileSink returns a new FileSink instance.
+var _ streams.Sink = (*FileSink)(nil)
+
+// NewFileSink returns a new FileSink connector.
 func NewFileSink(fileName string) *FileSink {
 	sink := &FileSink{
 		fileName: fileName,
@@ -87,8 +93,8 @@ func (fs *FileSink) init() {
 			log.Fatalf("FileSink failed to open the file %s", fs.fileName)
 		}
 		defer file.Close()
-		for elem := range fs.in {
-			_, err = file.WriteString(elem.(string))
+		for element := range fs.in {
+			_, err = file.WriteString(element.(string))
 			if err != nil {
 				log.Fatalf("FileSink failed to write to the file %s", fs.fileName)
 			}
@@ -96,7 +102,7 @@ func (fs *FileSink) init() {
 	}()
 }
 
-// In returns an input channel for receiving data
+// In returns the input channel of the FileSink connector.
 func (fs *FileSink) In() chan<- any {
 	return fs.in
 }

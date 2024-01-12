@@ -32,7 +32,9 @@ type NetSource struct {
 	out      chan any
 }
 
-// NewNetSource returns a new instance of NetSource.
+var _ streams.Source = (*NetSource)(nil)
+
+// NewNetSource returns a new NetSource connector.
 func NewNetSource(ctx context.Context, connType ConnType, address string) (*NetSource, error) {
 	var err error
 	var conn net.Conn
@@ -120,13 +122,13 @@ func handleConnection(conn net.Conn, out chan<- any) {
 	conn.Close()
 }
 
-// Via streams data through the given flow
-func (ns *NetSource) Via(_flow streams.Flow) streams.Flow {
-	flow.DoStream(ns, _flow)
-	return _flow
+// Via streams data to a specified operator and returns it.
+func (ns *NetSource) Via(operator streams.Flow) streams.Flow {
+	flow.DoStream(ns, operator)
+	return operator
 }
 
-// Out returns an output channel for sending data
+// Out returns the output channel of the NetSource connector.
 func (ns *NetSource) Out() <-chan any {
 	return ns.out
 }
@@ -138,7 +140,9 @@ type NetSink struct {
 	in       chan any
 }
 
-// NewNetSink returns a new instance of NetSink.
+var _ streams.Sink = (*NetSink)(nil)
+
+// NewNetSink returns a new NetSink connector.
 func NewNetSink(connType ConnType, address string) (*NetSink, error) {
 	var err error
 	var conn net.Conn
@@ -158,7 +162,7 @@ func NewNetSink(connType ConnType, address string) (*NetSink, error) {
 	return sink, nil
 }
 
-// init starts the main loop
+// init starts the stream processing loop
 func (ns *NetSink) init() {
 	log.Printf("NetSink connected on: %v", ns.conn.LocalAddr())
 	writer := bufio.NewWriter(ns.conn)
@@ -179,7 +183,7 @@ func (ns *NetSink) init() {
 	ns.conn.Close()
 }
 
-// In returns an input channel for receiving data
+// In returns the input channel of the NetSink connector.
 func (ns *NetSink) In() chan<- any {
 	return ns.in
 }

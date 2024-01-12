@@ -24,7 +24,8 @@ type FlatMap[T, R any] struct {
 // Verify FlatMap satisfies the Flow interface.
 var _ streams.Flow = (*FlatMap[any, any])(nil)
 
-// NewFlatMap returns a new FlatMap instance.
+// NewFlatMap returns a new FlatMap operator.
+// T specifies the incoming element type, and the outgoing element type is []R.
 //
 // flatMapFunction is the FlatMap transformation function.
 // parallelism is the flow parallelism factor. In case the events order matters, use parallelism = 1.
@@ -40,23 +41,23 @@ func NewFlatMap[T, R any](flatMapFunction FlatMapFunction[T, R], parallelism uin
 	return flatMap
 }
 
-// Via streams data through the given flow
+// Via streams data to a specified Flow and returns it.
 func (fm *FlatMap[T, R]) Via(flow streams.Flow) streams.Flow {
 	go fm.transmit(flow)
 	return flow
 }
 
-// To streams data to the given sink
+// To streams data to a specified Sink.
 func (fm *FlatMap[T, R]) To(sink streams.Sink) {
 	fm.transmit(sink)
 }
 
-// Out returns an output channel for sending data
+// Out returns the output channel of the FlatMap operator.
 func (fm *FlatMap[T, R]) Out() <-chan any {
 	return fm.out
 }
 
-// In returns an input channel for receiving data
+// In returns the input channel of the FlatMap operator.
 func (fm *FlatMap[T, R]) In() chan<- any {
 	return fm.in
 }

@@ -23,7 +23,7 @@ type SessionWindow[T any] struct {
 // Verify SessionWindow satisfies the Flow interface.
 var _ streams.Flow = (*SessionWindow[any])(nil)
 
-// NewSessionWindow returns a new SessionWindow instance.
+// NewSessionWindow returns a new SessionWindow operator.
 // T specifies the incoming element type, and the outgoing element type is []T.
 //
 // inactivityGap is the gap of inactivity that closes a session window when occurred.
@@ -52,12 +52,12 @@ func (sw *SessionWindow[T]) To(sink streams.Sink) {
 	sw.transmit(sink)
 }
 
-// Out returns the output channel of the SessionWindow.
+// Out returns the output channel of the SessionWindow operator.
 func (sw *SessionWindow[T]) Out() <-chan any {
 	return sw.out
 }
 
-// In returns the input channel of the SessionWindow.
+// In returns the input channel of the SessionWindow operator.
 func (sw *SessionWindow[T]) In() chan<- any {
 	return sw.in
 }

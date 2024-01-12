@@ -7,6 +7,7 @@ import (
 
 	ext "github.com/reugn/go-streams/extension"
 	"github.com/reugn/go-streams/flow"
+	"github.com/reugn/go-streams/internal/assert"
 )
 
 func TestSlidingWindow(t *testing.T) {
@@ -14,10 +15,7 @@ func TestSlidingWindow(t *testing.T) {
 	out := make(chan any)
 
 	source := ext.NewChanSource(in)
-	slidingWindow, err := flow.NewSlidingWindow[string](50*time.Millisecond, 20*time.Millisecond)
-	if err != nil {
-		t.Fatal(err)
-	}
+	slidingWindow := flow.NewSlidingWindow[string](50*time.Millisecond, 20*time.Millisecond)
 	sink := ext.NewChanSink(out)
 
 	go func() {
@@ -41,14 +39,14 @@ func TestSlidingWindow(t *testing.T) {
 	}
 	fmt.Println(outputValues)
 
-	assertEquals(t, 6, len(outputValues)) // [[a b c] [b c d] [c d e] [d e f g] [f g] [g]]
+	assert.Equal(t, 6, len(outputValues)) // [[a b c] [b c d] [c d e] [d e f g] [f g] [g]]
 
-	assertEquals(t, []string{"a", "b", "c"}, outputValues[0])
-	assertEquals(t, []string{"b", "c", "d"}, outputValues[1])
-	// assertEquals(t, []string{"c", "d", "e"}, outputValues[2])
-	// assertEquals(t, []string{"d", "e", "f", "g"}, outputValues[3])
-	assertEquals(t, []string{"f", "g"}, outputValues[4])
-	assertEquals(t, []string{"g"}, outputValues[5])
+	assert.Equal(t, []string{"a", "b", "c"}, outputValues[0])
+	assert.Equal(t, []string{"b", "c", "d"}, outputValues[1])
+	// assert.Equal(t, []string{"c", "d", "e"}, outputValues[2])
+	// assert.Equal(t, []string{"d", "e", "f", "g"}, outputValues[3])
+	assert.Equal(t, []string{"f", "g"}, outputValues[4])
+	assert.Equal(t, []string{"g"}, outputValues[5])
 }
 
 type element struct {
@@ -61,17 +59,12 @@ func TestSlidingWindowWithExtractor(t *testing.T) {
 	out := make(chan any)
 
 	source := ext.NewChanSource(in)
-	slidingWindow, err := flow.NewSlidingWindowWithTSExtractor(
+	slidingWindow := flow.NewSlidingWindowWithExtractor(
 		50*time.Millisecond,
 		20*time.Millisecond,
 		func(e element) int64 {
 			return e.ts
 		})
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	sink := ext.NewChanSink(out)
 
 	now := time.Now()
@@ -99,14 +92,14 @@ func TestSlidingWindowWithExtractor(t *testing.T) {
 	}
 	fmt.Println(outputValues)
 
-	assertEquals(t, 6, len(outputValues)) // [[a b c d e f g] [c d e f g] [e f g] [e f g] [f g] [g]]
+	assert.Equal(t, 6, len(outputValues)) // [[a b c d e f g] [c d e f g] [e f g] [e f g] [f g] [g]]
 
-	assertEquals(t, []string{"a", "b", "c", "d", "e", "f", "g"}, outputValues[0])
-	assertEquals(t, []string{"c", "d", "e", "f", "g"}, outputValues[1])
-	assertEquals(t, []string{"e", "f", "g"}, outputValues[2])
-	assertEquals(t, []string{"e", "f", "g"}, outputValues[3])
-	assertEquals(t, []string{"f", "g"}, outputValues[4])
-	assertEquals(t, []string{"g"}, outputValues[5])
+	assert.Equal(t, []string{"a", "b", "c", "d", "e", "f", "g"}, outputValues[0])
+	assert.Equal(t, []string{"c", "d", "e", "f", "g"}, outputValues[1])
+	assert.Equal(t, []string{"e", "f", "g"}, outputValues[2])
+	assert.Equal(t, []string{"e", "f", "g"}, outputValues[3])
+	assert.Equal(t, []string{"f", "g"}, outputValues[4])
+	assert.Equal(t, []string{"g"}, outputValues[5])
 }
 
 func stringValues(elements []element) []string {
@@ -117,12 +110,8 @@ func stringValues(elements []element) []string {
 	return values
 }
 
-func TestSlidingWindowInvalidParameters(t *testing.T) {
-	slidingWindow, err := flow.NewSlidingWindow[string](10*time.Millisecond, 20*time.Millisecond)
-	if slidingWindow != nil {
-		t.Fatal("slidingWindow should be nil")
-	}
-	if err == nil {
-		t.Fatal("err should not be nil")
-	}
+func TestSlidingWindowInvalidArguments(t *testing.T) {
+	assert.Panics(t, func() {
+		flow.NewSlidingWindow[string](10*time.Millisecond, 20*time.Millisecond)
+	})
 }

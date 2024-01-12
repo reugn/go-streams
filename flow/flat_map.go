@@ -1,6 +1,8 @@
 package flow
 
 import (
+	"fmt"
+
 	"github.com/reugn/go-streams"
 )
 
@@ -18,7 +20,7 @@ type FlatMap[T, R any] struct {
 	flatMapFunction FlatMapFunction[T, R]
 	in              chan any
 	out             chan any
-	parallelism     uint
+	parallelism     int
 }
 
 // Verify FlatMap satisfies the Flow interface.
@@ -29,7 +31,11 @@ var _ streams.Flow = (*FlatMap[any, any])(nil)
 //
 // flatMapFunction is the FlatMap transformation function.
 // parallelism is the flow parallelism factor. In case the events order matters, use parallelism = 1.
-func NewFlatMap[T, R any](flatMapFunction FlatMapFunction[T, R], parallelism uint) *FlatMap[T, R] {
+// If the parallelism argument is not positive, NewFlatMap will panic.
+func NewFlatMap[T, R any](flatMapFunction FlatMapFunction[T, R], parallelism int) *FlatMap[T, R] {
+	if parallelism < 1 {
+		panic(fmt.Sprintf("nonpositive FlatMap parallelism: %d", parallelism))
+	}
 	flatMap := &FlatMap[T, R]{
 		flatMapFunction: flatMapFunction,
 		in:              make(chan any),
@@ -81,7 +87,7 @@ func (fm *FlatMap[T, R]) doStream() {
 			}
 		}(elem.(T))
 	}
-	for i := 0; i < int(fm.parallelism); i++ {
+	for i := 0; i < fm.parallelism; i++ {
 		sem <- struct{}{}
 	}
 	close(fm.out)

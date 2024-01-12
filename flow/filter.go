@@ -1,6 +1,8 @@
 package flow
 
 import (
+	"fmt"
+
 	"github.com/reugn/go-streams"
 )
 
@@ -20,7 +22,7 @@ type Filter[T any] struct {
 	filterPredicate FilterPredicate[T]
 	in              chan any
 	out             chan any
-	parallelism     uint
+	parallelism     int
 }
 
 // Verify Filter satisfies the Flow interface.
@@ -31,7 +33,11 @@ var _ streams.Flow = (*Filter[any])(nil)
 //
 // filterPredicate is the boolean-valued filter function.
 // parallelism is the flow parallelism factor. In case the events order matters, use parallelism = 1.
-func NewFilter[T any](filterPredicate FilterPredicate[T], parallelism uint) *Filter[T] {
+// If the parallelism argument is not positive, NewFilter will panic.
+func NewFilter[T any](filterPredicate FilterPredicate[T], parallelism int) *Filter[T] {
+	if parallelism < 1 {
+		panic(fmt.Sprintf("nonpositive Filter parallelism: %d", parallelism))
+	}
 	filter := &Filter[T]{
 		filterPredicate: filterPredicate,
 		in:              make(chan any),
@@ -83,7 +89,7 @@ func (f *Filter[T]) doStream() {
 			}
 		}(elem.(T))
 	}
-	for i := 0; i < int(f.parallelism); i++ {
+	for i := 0; i < f.parallelism; i++ {
 		sem <- struct{}{}
 	}
 	close(f.out)

@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/reugn/go-streams"
@@ -27,7 +28,7 @@ var _ streams.Flow = (*Batch[any])(nil)
 // NewBatch will panic if the maxBatchSize argument is not positive.
 func NewBatch[T any](maxBatchSize int, timeInterval time.Duration) *Batch[T] {
 	if maxBatchSize < 1 {
-		panic("maxBatchSize must be positive")
+		panic(fmt.Sprintf("nonpositive maxBatchSize: %d", maxBatchSize))
 	}
 	batchFlow := &Batch[T]{
 		maxBatchSize: maxBatchSize,

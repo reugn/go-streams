@@ -1,6 +1,8 @@
 package flow
 
 import (
+	"fmt"
+
 	"github.com/reugn/go-streams"
 )
 
@@ -18,7 +20,7 @@ type Map[T, R any] struct {
 	mapFunction MapFunction[T, R]
 	in          chan any
 	out         chan any
-	parallelism uint
+	parallelism int
 }
 
 // Verify Map satisfies the Flow interface.
@@ -29,7 +31,11 @@ var _ streams.Flow = (*Map[any, any])(nil)
 //
 // mapFunction is the Map transformation function.
 // parallelism is the flow parallelism factor. In case the events order matters, use parallelism = 1.
-func NewMap[T, R any](mapFunction MapFunction[T, R], parallelism uint) *Map[T, R] {
+// If the parallelism argument is not positive, NewMap will panic.
+func NewMap[T, R any](mapFunction MapFunction[T, R], parallelism int) *Map[T, R] {
+	if parallelism < 1 {
+		panic(fmt.Sprintf("nonpositive Map parallelism: %d", parallelism))
+	}
 	mapFlow := &Map[T, R]{
 		mapFunction: mapFunction,
 		in:          make(chan any),
@@ -78,7 +84,7 @@ func (m *Map[T, R]) doStream() {
 			m.out <- result
 		}(elem.(T))
 	}
-	for i := 0; i < int(m.parallelism); i++ {
+	for i := 0; i < m.parallelism; i++ {
 		sem <- struct{}{}
 	}
 	close(m.out)

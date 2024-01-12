@@ -103,7 +103,7 @@ func Merge(outlets ...streams.Flow) streams.Flow {
 
 // Flatten creates a Flow to flatten the stream of slices.
 // T specifies the outgoing element type, and the incoming element type is []T.
-func Flatten[T any](parallelism uint) streams.Flow {
+func Flatten[T any](parallelism int) streams.Flow {
 	return NewFlatMap(func(element []T) []T {
 		return element
 	}, parallelism)

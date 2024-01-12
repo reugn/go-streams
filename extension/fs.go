@@ -7,7 +7,7 @@ import (
 
 	"github.com/reugn/go-streams"
 	"github.com/reugn/go-streams/flow"
-	"github.com/reugn/go-streams/util/ospkg"
+	"github.com/reugn/go-streams/internal/ospkg"
 )
 
 // FileSource represents an inbound connector that creates a stream of

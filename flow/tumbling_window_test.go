@@ -7,6 +7,7 @@ import (
 
 	ext "github.com/reugn/go-streams/extension"
 	"github.com/reugn/go-streams/flow"
+	"github.com/reugn/go-streams/internal/assert"
 )
 
 func TestTumblingWindow(t *testing.T) {
@@ -38,9 +39,9 @@ func TestTumblingWindow(t *testing.T) {
 	}
 	fmt.Println(outputValues)
 
-	assertEquals(t, 3, len(outputValues)) // [[a b c] [d e f] [g]]
+	assert.Equal(t, 3, len(outputValues)) // [[a b c] [d e f] [g]]
 
-	assertEquals(t, []string{"a", "b", "c"}, outputValues[0])
-	assertEquals(t, []string{"d", "e", "f"}, outputValues[1])
-	assertEquals(t, []string{"g"}, outputValues[2])
+	assert.Equal(t, []string{"a", "b", "c"}, outputValues[0])
+	assert.Equal(t, []string{"d", "e", "f"}, outputValues[1])
+	assert.Equal(t, []string{"g"}, outputValues[2])
 }

@@ -7,6 +7,7 @@ import (
 
 	ext "github.com/reugn/go-streams/extension"
 	"github.com/reugn/go-streams/flow"
+	"github.com/reugn/go-streams/internal/assert"
 )
 
 func TestSessionWindow(t *testing.T) {
@@ -36,11 +37,11 @@ func TestSessionWindow(t *testing.T) {
 	}
 	fmt.Println(outputValues)
 
-	assertEquals(t, 3, len(outputValues)) // [[a b c] [d] [e]]
+	assert.Equal(t, 3, len(outputValues)) // [[a b c] [d] [e]]
 
-	assertEquals(t, []string{"a", "b", "c"}, outputValues[0])
-	assertEquals(t, []string{"d"}, outputValues[1])
-	assertEquals(t, []string{"e"}, outputValues[2])
+	assert.Equal(t, []string{"a", "b", "c"}, outputValues[0])
+	assert.Equal(t, []string{"d"}, outputValues[1])
+	assert.Equal(t, []string{"e"}, outputValues[2])
 }
 
 func TestLongSessionWindow(t *testing.T) {
@@ -72,8 +73,8 @@ func TestLongSessionWindow(t *testing.T) {
 	}
 	fmt.Println(outputValues)
 
-	assertEquals(t, 2, len(outputValues)) // [[a b c d e f g] [h]]
+	assert.Equal(t, 2, len(outputValues)) // [[a b c d e f g] [h]]
 
-	assertEquals(t, []string{"a", "b", "c", "d", "e", "f", "g"}, outputValues[0])
-	assertEquals(t, []string{"h"}, outputValues[1])
+	assert.Equal(t, []string{"a", "b", "c", "d", "e", "f", "g"}, outputValues[0])
+	assert.Equal(t, []string{"h"}, outputValues[1])
 }

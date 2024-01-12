@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/reugn/go-streams/flow"
+	"github.com/reugn/go-streams/internal/assert"
 )
 
 func TestQueueOps(t *testing.T) {
@@ -18,7 +19,7 @@ func TestQueueOps(t *testing.T) {
 	queue.Update(head, time.Now().UnixNano())
 	first := heap.Pop(queue).(*flow.Item)
 
-	assertEquals(t, 2, first.Msg.(int))
+	assert.Equal(t, 2, first.Msg.(int))
 }
 
 func TestQueueOrder(t *testing.T) {
@@ -34,15 +35,15 @@ func TestQueueOrder(t *testing.T) {
 	pushItem(queue, 1)
 	pushItem(queue, 9)
 
-	assertEquals(t, 1, popMsg(queue))
-	assertEquals(t, 2, popMsg(queue))
-	assertEquals(t, 3, popMsg(queue))
-	assertEquals(t, 4, popMsg(queue))
-	assertEquals(t, 5, popMsg(queue))
-	assertEquals(t, 6, popMsg(queue))
-	assertEquals(t, 7, popMsg(queue))
-	assertEquals(t, 8, popMsg(queue))
-	assertEquals(t, 9, popMsg(queue))
+	assert.Equal(t, 1, popMsg(queue))
+	assert.Equal(t, 2, popMsg(queue))
+	assert.Equal(t, 3, popMsg(queue))
+	assert.Equal(t, 4, popMsg(queue))
+	assert.Equal(t, 5, popMsg(queue))
+	assert.Equal(t, 6, popMsg(queue))
+	assert.Equal(t, 7, popMsg(queue))
+	assert.Equal(t, 8, popMsg(queue))
+	assert.Equal(t, 9, popMsg(queue))
 }
 
 func pushItem(queue *flow.PriorityQueue, timestamp int64) {

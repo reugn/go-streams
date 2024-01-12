@@ -1,7 +1,6 @@
 package flow_test
 
 import (
-	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -10,6 +9,7 @@ import (
 
 	ext "github.com/reugn/go-streams/extension"
 	"github.com/reugn/go-streams/flow"
+	"github.com/reugn/go-streams/internal/assert"
 )
 
 var addAsterisk = func(in string) []string {
@@ -88,7 +88,7 @@ func TestComplexFlow(t *testing.T) {
 	}
 
 	expectedValues := []string{"B*", "B**", "C*", "C**"}
-	assertEquals(t, expectedValues, outputValues)
+	assert.Equal(t, expectedValues, outputValues)
 }
 
 func TestSplitFlow(t *testing.T) {
@@ -117,7 +117,7 @@ func TestSplitFlow(t *testing.T) {
 	sort.Strings(outputValues)
 
 	expectedValues := []string{"A", "B", "C"}
-	assertEquals(t, expectedValues, outputValues)
+	assert.Equal(t, expectedValues, outputValues)
 }
 
 func TestFanOutFlow(t *testing.T) {
@@ -150,7 +150,7 @@ func TestFanOutFlow(t *testing.T) {
 	sort.Strings(outputValues)
 
 	expectedValues := []string{"B", "B", "C", "C"}
-	assertEquals(t, expectedValues, outputValues)
+	assert.Equal(t, expectedValues, outputValues)
 }
 
 func TestRoundRobinFlow(t *testing.T) {
@@ -183,7 +183,7 @@ func TestRoundRobinFlow(t *testing.T) {
 	sort.Strings(outputValues)
 
 	expectedValues := []string{"B", "C"}
-	assertEquals(t, expectedValues, outputValues)
+	assert.Equal(t, expectedValues, outputValues)
 }
 
 func TestReduceFlow(t *testing.T) {
@@ -208,11 +208,32 @@ func TestReduceFlow(t *testing.T) {
 	}
 
 	expectedValues := []int{1, 3, 6, 10, 15}
-	assertEquals(t, expectedValues, outputValues)
+	assert.Equal(t, expectedValues, outputValues)
 }
 
-func assertEquals[T any](t *testing.T, expected T, actual T) {
-	if !reflect.DeepEqual(expected, actual) {
-		t.Fatalf("%v != %v", expected, actual)
-	}
+func TestFilterNonPositiveParallelism(t *testing.T) {
+	assert.Panics(t, func() {
+		flow.NewFilter(filterNotContainsA, 0)
+	})
+	assert.Panics(t, func() {
+		flow.NewFilter(filterNotContainsA, -1)
+	})
+}
+
+func TestFlatMapNonPositiveParallelism(t *testing.T) {
+	assert.Panics(t, func() {
+		flow.NewFlatMap(addAsterisk, 0)
+	})
+	assert.Panics(t, func() {
+		flow.NewFlatMap(addAsterisk, -1)
+	})
+}
+
+func TestMapNonPositiveParallelism(t *testing.T) {
+	assert.Panics(t, func() {
+		flow.NewMap(strings.ToUpper, 0)
+	})
+	assert.Panics(t, func() {
+		flow.NewMap(strings.ToUpper, -1)
+	})
 }

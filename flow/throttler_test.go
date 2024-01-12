@@ -7,6 +7,7 @@ import (
 
 	ext "github.com/reugn/go-streams/extension"
 	"github.com/reugn/go-streams/flow"
+	"github.com/reugn/go-streams/internal/assert"
 )
 
 func TestThrottlerWithBackpressure(t *testing.T) {
@@ -27,25 +28,25 @@ func TestThrottlerWithBackpressure(t *testing.T) {
 	}()
 
 	outputValues := readValues(interval/2, out)
-	assertEquals(t, []any{"a", "b"}, outputValues)
+	assert.Equal(t, []any{"a", "b"}, outputValues)
 	fmt.Println(outputValues)
 
 	outputValues = readValues(interval, out)
 	fmt.Println(outputValues)
-	assertEquals(t, []any{"c", "d"}, outputValues)
+	assert.Equal(t, []any{"c", "d"}, outputValues)
 
 	outputValues = readValues(interval, out)
 	fmt.Println(outputValues)
-	assertEquals(t, []any{"e", "f"}, outputValues)
+	assert.Equal(t, []any{"e", "f"}, outputValues)
 
 	outputValues = readValues(interval, out)
 	fmt.Println(outputValues)
-	assertEquals(t, []any{"g"}, outputValues)
+	assert.Equal(t, []any{"g"}, outputValues)
 
 	outputValues = readValues(interval, out)
 	fmt.Println(outputValues)
 	var empty []any
-	assertEquals(t, empty, outputValues)
+	assert.Equal(t, empty, outputValues)
 }
 
 func TestThrottlerWithDiscard(t *testing.T) {
@@ -66,7 +67,7 @@ func TestThrottlerWithDiscard(t *testing.T) {
 	}()
 
 	outputValues := readValues(interval/2, out)
-	assertEquals(t, []any{"a", "b"}, outputValues)
+	assert.Equal(t, []any{"a", "b"}, outputValues)
 	fmt.Println(outputValues)
 
 	outputValues = readValues(interval, out)
@@ -75,7 +76,25 @@ func TestThrottlerWithDiscard(t *testing.T) {
 	outputValues = readValues(interval, out)
 	fmt.Println(outputValues)
 	var empty []any
-	assertEquals(t, empty, outputValues)
+	assert.Equal(t, empty, outputValues)
+}
+
+func TestThrottlerNonPositiveElements(t *testing.T) {
+	assert.Panics(t, func() {
+		flow.NewThrottler(0, time.Second, 1, flow.Discard)
+	})
+	assert.Panics(t, func() {
+		flow.NewThrottler(-1, time.Second, 1, flow.Discard)
+	})
+}
+
+func TestThrottlerNonPositiveBufferSize(t *testing.T) {
+	assert.Panics(t, func() {
+		flow.NewThrottler(1, time.Second, 0, flow.Backpressure)
+	})
+	assert.Panics(t, func() {
+		flow.NewThrottler(1, time.Second, -1, flow.Backpressure)
+	})
 }
 
 func writeValues(in chan any) {

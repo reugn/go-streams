@@ -7,6 +7,7 @@ import (
 
 	ext "github.com/reugn/go-streams/extension"
 	"github.com/reugn/go-streams/flow"
+	"github.com/reugn/go-streams/internal/assert"
 )
 
 func TestBatch(t *testing.T) {
@@ -39,9 +40,18 @@ func TestBatch(t *testing.T) {
 	}
 	fmt.Println(outputValues)
 
-	assertEquals(t, 3, len(outputValues)) // [[a b c d] [e f g] [h]]
+	assert.Equal(t, 3, len(outputValues)) // [[a b c d] [e f g] [h]]
 
-	assertEquals(t, []string{"a", "b", "c", "d"}, outputValues[0])
-	assertEquals(t, []string{"e", "f", "g"}, outputValues[1])
-	assertEquals(t, []string{"h"}, outputValues[2])
+	assert.Equal(t, []string{"a", "b", "c", "d"}, outputValues[0])
+	assert.Equal(t, []string{"e", "f", "g"}, outputValues[1])
+	assert.Equal(t, []string{"h"}, outputValues[2])
+}
+
+func TestBatchInvalidArguments(t *testing.T) {
+	assert.Panics(t, func() {
+		flow.NewBatch[string](0, time.Second)
+	})
+	assert.Panics(t, func() {
+		flow.NewBatch[string](-1, time.Second)
+	})
 }

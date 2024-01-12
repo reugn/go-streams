@@ -22,14 +22,14 @@ const (
 
 // Throttler limits the throughput to a specific number of elements per time unit.
 type Throttler struct {
-	maxElements uint64
+	maxElements int64
 	period      time.Duration
 	mode        ThrottleMode
 	in          chan any
 	out         chan any
 	quotaSignal chan struct{}
 	done        chan struct{}
-	counter     uint64
+	counter     int64
 }
 
 // Verify Throttler satisfies the Flow interface.
@@ -40,9 +40,17 @@ var _ streams.Flow = (*Throttler)(nil)
 // elements is the maximum number of elements to be produced per the given period of time.
 // bufferSize specifies the buffer size for incoming elements.
 // mode specifies the processing behavior when the elements buffer overflows.
-func NewThrottler(elements uint, period time.Duration, bufferSize uint, mode ThrottleMode) *Throttler {
+//
+// If elements or bufferSize are not positive, NewThrottler will panic.
+func NewThrottler(elements int, period time.Duration, bufferSize int, mode ThrottleMode) *Throttler {
+	if elements < 1 {
+		panic(fmt.Sprintf("nonpositive elements number: %d", elements))
+	}
+	if bufferSize < 1 {
+		panic(fmt.Sprintf("nonpositive buffer size: %d", bufferSize))
+	}
 	throttler := &Throttler{
-		maxElements: uint64(elements),
+		maxElements: int64(elements),
 		period:      period,
 		mode:        mode,
 		in:          make(chan any),
@@ -58,7 +66,7 @@ func NewThrottler(elements uint, period time.Duration, bufferSize uint, mode Thr
 
 // quotaExceeded checks whether the quota per time unit has been exceeded.
 func (th *Throttler) quotaExceeded() bool {
-	return atomic.LoadUint64(&th.counter) >= th.maxElements
+	return atomic.LoadInt64(&th.counter) >= th.maxElements
 }
 
 // resetQuotaCounterLoop resets the throttler quota counter every th.period
@@ -70,7 +78,7 @@ func (th *Throttler) resetQuotaCounterLoop() {
 	for {
 		select {
 		case <-ticker.C:
-			atomic.StoreUint64(&th.counter, 0)
+			atomic.StoreInt64(&th.counter, 0)
 			th.notifyQuotaReset() // send quota reset
 
 		case <-th.done:
@@ -88,7 +96,7 @@ func (th *Throttler) notifyQuotaReset() {
 }
 
 // bufferize starts buffering incoming elements.
-// The method will panic if an unsupported ThrottleMode is specified.
+// If an unsupported ThrottleMode was specified, bufferize will panic.
 func (th *Throttler) bufferize() {
 	switch th.mode {
 	case Discard:
@@ -137,7 +145,7 @@ func (th *Throttler) streamPortioned(inlet streams.Inlet) {
 		if th.quotaExceeded() {
 			<-th.quotaSignal // wait for quota reset
 		}
-		atomic.AddUint64(&th.counter, 1)
+		atomic.AddInt64(&th.counter, 1)
 		inlet.In() <- element
 	}
 	close(th.done)

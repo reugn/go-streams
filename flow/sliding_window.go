@@ -2,7 +2,6 @@ package flow
 
 import (
 	"container/heap"
-	"errors"
 	"sync"
 	"time"
 
@@ -36,13 +35,15 @@ var _ streams.Flow = (*SlidingWindow[any])(nil)
 //
 // windowSize is the Duration of generated windows.
 // slidingInterval is the sliding interval of generated windows.
+//
+// NewSlidingWindow panics if slidingInterval is larger than windowSize.
 func NewSlidingWindow[T any](
 	windowSize time.Duration,
-	slidingInterval time.Duration) (*SlidingWindow[T], error) {
-	return NewSlidingWindowWithTSExtractor[T](windowSize, slidingInterval, nil)
+	slidingInterval time.Duration) *SlidingWindow[T] {
+	return NewSlidingWindowWithExtractor[T](windowSize, slidingInterval, nil)
 }
 
-// NewSlidingWindowWithTSExtractor returns a new SlidingWindow operator based on event time.
+// NewSlidingWindowWithExtractor returns a new SlidingWindow operator based on event time.
 // Event time is the time that each individual event occurred on its producing device.
 // Gives correct results on out-of-order events, late events, or on replays of data.
 // T specifies the incoming element type, and the outgoing element type is []T.
@@ -50,13 +51,15 @@ func NewSlidingWindow[T any](
 // windowSize is the Duration of generated windows.
 // slidingInterval is the sliding interval of generated windows.
 // timestampExtractor is the record timestamp (in nanoseconds) extractor.
-func NewSlidingWindowWithTSExtractor[T any](
+//
+// NewSlidingWindowWithExtractor panics if slidingInterval is larger than windowSize.
+func NewSlidingWindowWithExtractor[T any](
 	windowSize time.Duration,
 	slidingInterval time.Duration,
-	timestampExtractor func(T) int64) (*SlidingWindow[T], error) {
+	timestampExtractor func(T) int64) *SlidingWindow[T] {
 
 	if windowSize < slidingInterval {
-		return nil, errors.New("slidingInterval is larger than windowSize")
+		panic("sliding interval is larger than window size")
 	}
 
 	slidingWindow := &SlidingWindow[T]{
@@ -70,7 +73,7 @@ func NewSlidingWindowWithTSExtractor[T any](
 	}
 	go slidingWindow.receive()
 
-	return slidingWindow, nil
+	return slidingWindow
 }
 
 // Via streams data to a specified Flow and returns it.

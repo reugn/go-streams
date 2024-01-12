@@ -4,7 +4,7 @@ import (
 	"github.com/reugn/go-streams"
 )
 
-// PassThrough retransmits incoming elements as is.
+// PassThrough retransmits incoming elements downstream as they are.
 //
 // in  -- 1 -- 2 ---- 3 -- 4 ------ 5 --
 //
@@ -17,7 +17,7 @@ type PassThrough struct {
 // Verify PassThrough satisfies the Flow interface.
 var _ streams.Flow = (*PassThrough)(nil)
 
-// NewPassThrough returns a new PassThrough instance.
+// NewPassThrough returns a new PassThrough operator.
 func NewPassThrough() *PassThrough {
 	passThrough := &PassThrough{
 		in:  make(chan any),
@@ -28,37 +28,37 @@ func NewPassThrough() *PassThrough {
 	return passThrough
 }
 
-// Via streams data through the given flow
+// Via streams data to a specified Flow and returns it.
 func (pt *PassThrough) Via(flow streams.Flow) streams.Flow {
 	go pt.transmit(flow)
 	return flow
 }
 
-// To streams data to the given sink
+// To streams data to a specified Sink.
 func (pt *PassThrough) To(sink streams.Sink) {
 	pt.transmit(sink)
 }
 
-// Out returns an output channel for sending data
+// Out returns the output channel of the PassThrough operator.
 func (pt *PassThrough) Out() <-chan any {
 	return pt.out
 }
 
-// In returns an input channel for receiving data
+// In returns the input channel of the PassThrough operator.
 func (pt *PassThrough) In() chan<- any {
 	return pt.in
 }
 
 func (pt *PassThrough) transmit(inlet streams.Inlet) {
-	for elem := range pt.Out() {
-		inlet.In() <- elem
+	for element := range pt.Out() {
+		inlet.In() <- element
 	}
 	close(inlet.In())
 }
 
 func (pt *PassThrough) doStream() {
-	for elem := range pt.in {
-		pt.out <- elem
+	for element := range pt.in {
+		pt.out <- element
 	}
 	close(pt.out)
 }

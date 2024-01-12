@@ -24,7 +24,8 @@ type Map[T, R any] struct {
 // Verify Map satisfies the Flow interface.
 var _ streams.Flow = (*Map[any, any])(nil)
 
-// NewMap returns a new Map instance.
+// NewMap returns a new Map operator.
+// T specifies the incoming element type, and the outgoing element type is R.
 //
 // mapFunction is the Map transformation function.
 // parallelism is the flow parallelism factor. In case the events order matters, use parallelism = 1.
@@ -39,23 +40,23 @@ func NewMap[T, R any](mapFunction MapFunction[T, R], parallelism uint) *Map[T, R
 	return mapFlow
 }
 
-// Via streams data through the given flow
+// Via streams data to a specified Flow and returns it.
 func (m *Map[T, R]) Via(flow streams.Flow) streams.Flow {
 	go m.transmit(flow)
 	return flow
 }
 
-// To streams data to the given sink
+// To streams data to a specified Sink.
 func (m *Map[T, R]) To(sink streams.Sink) {
 	m.transmit(sink)
 }
 
-// Out returns an output channel for sending data
+// Out returns the output channel of the Map operator.
 func (m *Map[T, R]) Out() <-chan any {
 	return m.out
 }
 
-// In returns an input channel for receiving data
+// In returns the input channel of the Map operator.
 func (m *Map[T, R]) In() chan<- any {
 	return m.in
 }

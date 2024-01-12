@@ -29,7 +29,7 @@ type SlidingWindow[T any] struct {
 // Verify SlidingWindow satisfies the Flow interface.
 var _ streams.Flow = (*SlidingWindow[any])(nil)
 
-// NewSlidingWindow returns a new processing time based SlidingWindow.
+// NewSlidingWindow returns a new SlidingWindow operator based on processing time.
 // Processing time refers to the system time of the machine that is executing the
 // respective operation.
 // T specifies the incoming element type, and the outgoing element type is []T.
@@ -42,7 +42,7 @@ func NewSlidingWindow[T any](
 	return NewSlidingWindowWithTSExtractor[T](windowSize, slidingInterval, nil)
 }
 
-// NewSlidingWindowWithTSExtractor returns a new event time based SlidingWindow.
+// NewSlidingWindowWithTSExtractor returns a new SlidingWindow operator based on event time.
 // Event time is the time that each individual event occurred on its producing device.
 // Gives correct results on out-of-order events, late events, or on replays of data.
 // T specifies the incoming element type, and the outgoing element type is []T.
@@ -86,12 +86,12 @@ func (sw *SlidingWindow[T]) To(sink streams.Sink) {
 	sw.transmit(sink)
 }
 
-// Out returns the output channel of the SlidingWindow.
+// Out returns the output channel of the SlidingWindow operator.
 func (sw *SlidingWindow[T]) Out() <-chan any {
 	return sw.out
 }
 
-// In returns the input channel of the SlidingWindow.
+// In returns the input channel of the SlidingWindow operator.
 func (sw *SlidingWindow[T]) In() chan<- any {
 	return sw.in
 }

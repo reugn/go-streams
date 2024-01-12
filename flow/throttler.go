@@ -35,7 +35,7 @@ type Throttler struct {
 // Verify Throttler satisfies the Flow interface.
 var _ streams.Flow = (*Throttler)(nil)
 
-// NewThrottler returns a new Throttler instance.
+// NewThrottler returns a new Throttler operator.
 //
 // elements is the maximum number of elements to be produced per the given period of time.
 // bufferSize specifies the buffer size for incoming elements.
@@ -108,23 +108,23 @@ func (th *Throttler) bufferize() {
 	close(th.out)
 }
 
-// Via streams data through the given flow
+// Via streams data to a specified Flow and returns it.
 func (th *Throttler) Via(flow streams.Flow) streams.Flow {
 	go th.streamPortioned(flow)
 	return flow
 }
 
-// To streams data to the given sink
+// To streams data to a specified Sink.
 func (th *Throttler) To(sink streams.Sink) {
 	th.streamPortioned(sink)
 }
 
-// Out returns an output channel for sending data
+// Out returns the output channel of the Throttler operator.
 func (th *Throttler) Out() <-chan any {
 	return th.out
 }
 
-// In returns an input channel for receiving data
+// In returns the input channel of the Throttler operator.
 func (th *Throttler) In() chan<- any {
 	return th.in
 }

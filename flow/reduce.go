@@ -25,7 +25,8 @@ type Reduce[T any] struct {
 // Verify Reduce satisfies the Flow interface.
 var _ streams.Flow = (*Reduce[any])(nil)
 
-// NewReduce returns a new Reduce instance.
+// NewReduce returns a new Reduce operator.
+// T specifies the incoming and the outgoing element type.
 //
 // reduceFunction combines the current element with the last reduced value.
 func NewReduce[T any](reduceFunction ReduceFunction[T]) *Reduce[T] {
@@ -38,23 +39,23 @@ func NewReduce[T any](reduceFunction ReduceFunction[T]) *Reduce[T] {
 	return reduce
 }
 
-// Via streams data through the given flow
+// Via streams data to a specified Flow and returns it.
 func (r *Reduce[T]) Via(flow streams.Flow) streams.Flow {
 	go r.transmit(flow)
 	return flow
 }
 
-// To streams data to the given sink
+// To streams data to a specified Sink.
 func (r *Reduce[T]) To(sink streams.Sink) {
 	r.transmit(sink)
 }
 
-// Out returns an output channel for sending data
+// Out returns the output channel of the Reduce operator.
 func (r *Reduce[T]) Out() <-chan any {
 	return r.out
 }
 
-// In returns an input channel for receiving data
+// In returns the input channel of the Reduce operator.
 func (r *Reduce[T]) In() chan<- any {
 	return r.in
 }

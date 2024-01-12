@@ -22,7 +22,7 @@ type TumblingWindow[T any] struct {
 // Verify TumblingWindow satisfies the Flow interface.
 var _ streams.Flow = (*TumblingWindow[any])(nil)
 
-// NewTumblingWindow returns a new TumblingWindow instance.
+// NewTumblingWindow returns a new TumblingWindow operator.
 // T specifies the incoming element type, and the outgoing element type is []T.
 //
 // size is the Duration of generated windows.
@@ -50,12 +50,12 @@ func (tw *TumblingWindow[T]) To(sink streams.Sink) {
 	tw.transmit(sink)
 }
 
-// Out returns the output channel of the TumblingWindow.
+// Out returns the output channel of the TumblingWindow operator.
 func (tw *TumblingWindow[T]) Out() <-chan any {
 	return tw.out
 }
 
-// In returns the input channel of the TumblingWindow.
+// In returns the input channel of the TumblingWindow operator.
 func (tw *TumblingWindow[T]) In() chan<- any {
 	return tw.in
 }

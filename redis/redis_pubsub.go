@@ -19,7 +19,7 @@ type PubSubSource struct {
 	ctx         context.Context
 	redisClient *redis.Client
 	channel     string
-	out         chan interface{}
+	out         chan any
 }
 
 // NewPubSubSource returns a new PubSubSource instance.
@@ -41,7 +41,7 @@ func NewPubSubSource(ctx context.Context, redisClient *redis.Client, channel str
 		ctx:         ctx,
 		redisClient: redisClient,
 		channel:     channel,
-		out:         make(chan interface{}),
+		out:         make(chan any),
 	}
 
 	go source.init(pubsub.Channel())
@@ -73,7 +73,7 @@ func (ps *PubSubSource) Via(_flow streams.Flow) streams.Flow {
 }
 
 // Out returns an output channel for sending data
-func (ps *PubSubSource) Out() <-chan interface{} {
+func (ps *PubSubSource) Out() <-chan any {
 	return ps.out
 }
 
@@ -82,7 +82,7 @@ type PubSubSink struct {
 	ctx         context.Context
 	redisClient *redis.Client
 	channel     string
-	in          chan interface{}
+	in          chan any
 }
 
 // NewPubSubSink returns a new PubSubSink instance.
@@ -94,7 +94,7 @@ func NewPubSubSink(ctx context.Context, redisClient *redis.Client, channel strin
 		ctx:         ctx,
 		redisClient: redisClient,
 		channel:     channel,
-		in:          make(chan interface{}),
+		in:          make(chan any),
 	}
 
 	go sink.init()
@@ -121,6 +121,6 @@ func (ps *PubSubSink) init() {
 }
 
 // In returns an input channel for receiving data
-func (ps *PubSubSink) In() chan<- interface{} {
+func (ps *PubSubSink) In() chan<- any {
 	return ps.in
 }

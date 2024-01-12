@@ -4,13 +4,13 @@ import "container/heap"
 
 // Item represents a PriorityQueue item.
 type Item struct {
-	Msg   interface{}
+	Msg   any
 	epoch int64 // item priority, backed by the epoch time.
 	index int   // maintained by the heap.Interface methods.
 }
 
 // NewItem returns a new Item.
-func NewItem(msg interface{}, epoch int64, index int) *Item {
+func NewItem(msg any, epoch int64, index int) *Item {
 	return &Item{msg, epoch, index}
 }
 
@@ -34,7 +34,7 @@ func (pq PriorityQueue) Swap(i, j int) {
 
 // Push implements heap.Interface.Push.
 // Appends an item to the PriorityQueue.
-func (pq *PriorityQueue) Push(x interface{}) {
+func (pq *PriorityQueue) Push(x any) {
 	n := len(*pq)
 	item := x.(*Item)
 	item.index = n
@@ -43,7 +43,7 @@ func (pq *PriorityQueue) Push(x interface{}) {
 
 // Pop implements heap.Interface.Pop.
 // Removes and returns the Len() - 1 element.
-func (pq *PriorityQueue) Pop() interface{} {
+func (pq *PriorityQueue) Pop() any {
 	old := *pq
 	n := len(old)
 	item := old[n-1]

@@ -16,8 +16,8 @@ type FlatMapFunction[T, R any] func(T) []R
 // out -- 1' - 2' -------- 4'- 4" - 5' -
 type FlatMap[T, R any] struct {
 	flatMapFunction FlatMapFunction[T, R]
-	in              chan interface{}
-	out             chan interface{}
+	in              chan any
+	out             chan any
 	parallelism     uint
 }
 
@@ -31,8 +31,8 @@ var _ streams.Flow = (*FlatMap[any, any])(nil)
 func NewFlatMap[T, R any](flatMapFunction FlatMapFunction[T, R], parallelism uint) *FlatMap[T, R] {
 	flatMap := &FlatMap[T, R]{
 		flatMapFunction: flatMapFunction,
-		in:              make(chan interface{}),
-		out:             make(chan interface{}),
+		in:              make(chan any),
+		out:             make(chan any),
 		parallelism:     parallelism,
 	}
 	go flatMap.doStream()
@@ -52,12 +52,12 @@ func (fm *FlatMap[T, R]) To(sink streams.Sink) {
 }
 
 // Out returns an output channel for sending data
-func (fm *FlatMap[T, R]) Out() <-chan interface{} {
+func (fm *FlatMap[T, R]) Out() <-chan any {
 	return fm.out
 }
 
 // In returns an input channel for receiving data
-func (fm *FlatMap[T, R]) In() chan<- interface{} {
+func (fm *FlatMap[T, R]) In() chan<- any {
 	return fm.in
 }
 

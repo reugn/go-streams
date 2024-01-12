@@ -16,7 +16,7 @@ import (
 type PulsarSource struct {
 	client   pulsar.Client
 	consumer pulsar.Consumer
-	out      chan interface{}
+	out      chan any
 	ctx      context.Context
 }
 
@@ -36,7 +36,7 @@ func NewPulsarSource(ctx context.Context, clientOptions *pulsar.ClientOptions,
 	source := &PulsarSource{
 		client:   client,
 		consumer: consumer,
-		out:      make(chan interface{}),
+		out:      make(chan any),
 		ctx:      ctx,
 	}
 
@@ -81,7 +81,7 @@ func (ps *PulsarSource) Via(_flow streams.Flow) streams.Flow {
 }
 
 // Out returns an output channel for sending data
-func (ps *PulsarSource) Out() <-chan interface{} {
+func (ps *PulsarSource) Out() <-chan any {
 	return ps.out
 }
 
@@ -89,7 +89,7 @@ func (ps *PulsarSource) Out() <-chan interface{} {
 type PulsarSink struct {
 	client   pulsar.Client
 	producer pulsar.Producer
-	in       chan interface{}
+	in       chan any
 	ctx      context.Context
 }
 
@@ -109,7 +109,7 @@ func NewPulsarSink(ctx context.Context, clientOptions *pulsar.ClientOptions,
 	sink := &PulsarSink{
 		client:   client,
 		producer: producer,
-		in:       make(chan interface{}),
+		in:       make(chan any),
 		ctx:      ctx,
 	}
 
@@ -147,6 +147,6 @@ func (ps *PulsarSink) init() {
 }
 
 // In returns an input channel for receiving data
-func (ps *PulsarSink) In() chan<- interface{} {
+func (ps *PulsarSink) In() chan<- any {
 	return ps.in
 }

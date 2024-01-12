@@ -20,7 +20,7 @@ type StreamSource struct {
 	redisClient     *redis.Client
 	readGroupArgs   *redis.XReadGroupArgs
 	groupCreateArgs *XGroupCreateArgs
-	out             chan interface{}
+	out             chan any
 }
 
 // XGroupCreateArgs represents the arguments for creating a consumer group.
@@ -67,7 +67,7 @@ func NewStreamSource(ctx context.Context, redisClient *redis.Client,
 		redisClient:     redisClient,
 		readGroupArgs:   readGroupArgs,
 		groupCreateArgs: groupCreateArgs,
-		out:             make(chan interface{}),
+		out:             make(chan any),
 	}
 
 	go source.init()
@@ -110,7 +110,7 @@ func (rs *StreamSource) Via(_flow streams.Flow) streams.Flow {
 }
 
 // Out returns an output channel for sending data
-func (rs *StreamSource) Out() <-chan interface{} {
+func (rs *StreamSource) Out() <-chan any {
 	return rs.out
 }
 
@@ -119,7 +119,7 @@ type StreamSink struct {
 	ctx         context.Context
 	redisClient *redis.Client
 	stream      string
-	in          chan interface{}
+	in          chan any
 }
 
 // NewStreamSink returns a new StreamSink instance.
@@ -131,7 +131,7 @@ func NewStreamSink(ctx context.Context, redisClient *redis.Client, stream string
 		ctx:         ctx,
 		redisClient: redisClient,
 		stream:      stream,
-		in:          make(chan interface{}),
+		in:          make(chan any),
 	}
 
 	go sink.init()
@@ -147,7 +147,7 @@ func (rs *StreamSink) init() {
 				Stream: rs.stream, // use the target stream name
 				Values: m.Values,
 			})
-		case map[string]interface{}:
+		case map[string]any:
 			rs.xAdd(&redis.XAddArgs{
 				Stream: rs.stream,
 				Values: m,
@@ -172,6 +172,6 @@ func (rs *StreamSink) xAdd(args *redis.XAddArgs) {
 }
 
 // In returns an input channel for receiving data
-func (rs *StreamSink) In() chan<- interface{} {
+func (rs *StreamSink) In() chan<- any {
 	return rs.in
 }

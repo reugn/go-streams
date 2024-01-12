@@ -17,9 +17,9 @@ type ReduceFunction[T any] func(T, T) T
 // out -- 1 -- 2' --- 3' - 4' ----- 5' -
 type Reduce[T any] struct {
 	reduceFunction ReduceFunction[T]
-	in             chan interface{}
-	out            chan interface{}
-	lastReduced    interface{}
+	in             chan any
+	out            chan any
+	lastReduced    any
 }
 
 // Verify Reduce satisfies the Flow interface.
@@ -31,8 +31,8 @@ var _ streams.Flow = (*Reduce[any])(nil)
 func NewReduce[T any](reduceFunction ReduceFunction[T]) *Reduce[T] {
 	reduce := &Reduce[T]{
 		reduceFunction: reduceFunction,
-		in:             make(chan interface{}),
-		out:            make(chan interface{}),
+		in:             make(chan any),
+		out:            make(chan any),
 	}
 	go reduce.doStream()
 	return reduce
@@ -50,12 +50,12 @@ func (r *Reduce[T]) To(sink streams.Sink) {
 }
 
 // Out returns an output channel for sending data
-func (r *Reduce[T]) Out() <-chan interface{} {
+func (r *Reduce[T]) Out() <-chan any {
 	return r.out
 }
 
 // In returns an input channel for receiving data
-func (r *Reduce[T]) In() chan<- interface{} {
+func (r *Reduce[T]) In() chan<- any {
 	return r.in
 }
 

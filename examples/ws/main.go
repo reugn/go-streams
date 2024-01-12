@@ -17,7 +17,7 @@ import (
 
 type wsServer struct {
 	clients   map[*websocket.Conn]bool
-	broadcast chan interface{}
+	broadcast chan any
 	upgrader  websocket.Upgrader
 }
 
@@ -29,7 +29,7 @@ func startWsServer() {
 	}
 	server := &wsServer{
 		clients:   make(map[*websocket.Conn]bool),
-		broadcast: make(chan interface{}),
+		broadcast: make(chan any),
 		upgrader:  upgrader,
 	}
 

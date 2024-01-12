@@ -10,8 +10,8 @@ import (
 //
 // out -- 1 -- 2 ---- 3 -- 4 ------ 5 --
 type PassThrough struct {
-	in  chan interface{}
-	out chan interface{}
+	in  chan any
+	out chan any
 }
 
 // Verify PassThrough satisfies the Flow interface.
@@ -20,8 +20,8 @@ var _ streams.Flow = (*PassThrough)(nil)
 // NewPassThrough returns a new PassThrough instance.
 func NewPassThrough() *PassThrough {
 	passThrough := &PassThrough{
-		in:  make(chan interface{}),
-		out: make(chan interface{}),
+		in:  make(chan any),
+		out: make(chan any),
 	}
 	go passThrough.doStream()
 
@@ -40,12 +40,12 @@ func (pt *PassThrough) To(sink streams.Sink) {
 }
 
 // Out returns an output channel for sending data
-func (pt *PassThrough) Out() <-chan interface{} {
+func (pt *PassThrough) Out() <-chan any {
 	return pt.out
 }
 
 // In returns an input channel for receiving data
-func (pt *PassThrough) In() chan<- interface{} {
+func (pt *PassThrough) In() chan<- any {
 	return pt.in
 }
 

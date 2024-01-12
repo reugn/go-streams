@@ -2,12 +2,12 @@ package streams
 
 // Inlet represents a type that exposes one open input.
 type Inlet interface {
-	In() chan<- interface{}
+	In() chan<- any
 }
 
 // Outlet represents a type that exposes one open output.
 type Outlet interface {
-	Out() <-chan interface{}
+	Out() <-chan any
 }
 
 // Source represents a set of stream processing steps that has one open output.

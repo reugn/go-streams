@@ -16,8 +16,8 @@ type MapFunction[T, R any] func(T) R
 // out -- 1' - 2' --- 3' - 4' ----- 5' -
 type Map[T, R any] struct {
 	mapFunction MapFunction[T, R]
-	in          chan interface{}
-	out         chan interface{}
+	in          chan any
+	out         chan any
 	parallelism uint
 }
 
@@ -31,8 +31,8 @@ var _ streams.Flow = (*Map[any, any])(nil)
 func NewMap[T, R any](mapFunction MapFunction[T, R], parallelism uint) *Map[T, R] {
 	mapFlow := &Map[T, R]{
 		mapFunction: mapFunction,
-		in:          make(chan interface{}),
-		out:         make(chan interface{}),
+		in:          make(chan any),
+		out:         make(chan any),
 		parallelism: parallelism,
 	}
 	go mapFlow.doStream()
@@ -51,12 +51,12 @@ func (m *Map[T, R]) To(sink streams.Sink) {
 }
 
 // Out returns an output channel for sending data
-func (m *Map[T, R]) Out() <-chan interface{} {
+func (m *Map[T, R]) Out() <-chan any {
 	return m.out
 }
 
 // In returns an input channel for receiving data
-func (m *Map[T, R]) In() chan<- interface{} {
+func (m *Map[T, R]) In() chan<- any {
 	return m.in
 }
 

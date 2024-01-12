@@ -34,7 +34,7 @@ type AerospikeSource struct {
 	client                       *aero.Client
 	recordsChannel               chan *aero.Result
 	scanPolicy                   *aero.ScanPolicy
-	out                          chan interface{}
+	out                          chan any
 	ctx                          context.Context
 	properties                   *AerospikeProperties
 	changeNotificationProperties *ChangeNotificationProperties
@@ -61,7 +61,7 @@ func NewAerospikeSource(ctx context.Context,
 		client:                       client,
 		recordsChannel:               records,
 		scanPolicy:                   scanPolicy,
-		out:                          make(chan interface{}),
+		out:                          make(chan any),
 		ctx:                          ctx,
 		properties:                   properties,
 		changeNotificationProperties: changeNotificationProperties,
@@ -150,7 +150,7 @@ func (as *AerospikeSource) Via(_flow streams.Flow) streams.Flow {
 }
 
 // Out returns an output channel for sending data
-func (as *AerospikeSource) Out() <-chan interface{} {
+func (as *AerospikeSource) Out() <-chan any {
 	return as.out
 }
 
@@ -164,7 +164,7 @@ type AerospikeKeyBins struct {
 // AerospikeSink represents an Aerospike sink connector.
 type AerospikeSink struct {
 	client      *aero.Client
-	in          chan interface{}
+	in          chan any
 	ctx         context.Context
 	properties  *AerospikeProperties
 	writePolicy *aero.WritePolicy
@@ -184,7 +184,7 @@ func NewAerospikeSink(ctx context.Context,
 
 	source := &AerospikeSink{
 		client:      client,
-		in:          make(chan interface{}),
+		in:          make(chan any),
 		ctx:         ctx,
 		properties:  properties,
 		writePolicy: writePolicy,
@@ -228,6 +228,6 @@ func (as *AerospikeSink) init() {
 }
 
 // In returns an input channel for receiving data
-func (as *AerospikeSink) In() chan<- interface{} {
+func (as *AerospikeSink) In() chan<- any {
 	return as.in
 }

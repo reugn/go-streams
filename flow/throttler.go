@@ -25,8 +25,8 @@ type Throttler struct {
 	maxElements uint64
 	period      time.Duration
 	mode        ThrottleMode
-	in          chan interface{}
-	out         chan interface{}
+	in          chan any
+	out         chan any
 	quotaSignal chan struct{}
 	done        chan struct{}
 	counter     uint64
@@ -45,8 +45,8 @@ func NewThrottler(elements uint, period time.Duration, bufferSize uint, mode Thr
 		maxElements: uint64(elements),
 		period:      period,
 		mode:        mode,
-		in:          make(chan interface{}),
-		out:         make(chan interface{}, bufferSize),
+		in:          make(chan any),
+		out:         make(chan any, bufferSize),
 		quotaSignal: make(chan struct{}),
 		done:        make(chan struct{}),
 	}
@@ -120,12 +120,12 @@ func (th *Throttler) To(sink streams.Sink) {
 }
 
 // Out returns an output channel for sending data
-func (th *Throttler) Out() <-chan interface{} {
+func (th *Throttler) Out() <-chan any {
 	return th.out
 }
 
 // In returns an input channel for receiving data
-func (th *Throttler) In() chan<- interface{} {
+func (th *Throttler) In() chan<- any {
 	return th.in
 }
 

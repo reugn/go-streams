@@ -13,14 +13,14 @@ import (
 // FileSource represents an inbound connector that reads items from a file.
 type FileSource struct {
 	fileName string
-	in       chan interface{}
+	in       chan any
 }
 
 // NewFileSource returns a new FileSource instance.
 func NewFileSource(fileName string) *FileSource {
 	source := &FileSource{
 		fileName: fileName,
-		in:       make(chan interface{}),
+		in:       make(chan any),
 	}
 	source.init()
 	return source
@@ -60,21 +60,21 @@ func (fs *FileSource) Via(_flow streams.Flow) streams.Flow {
 }
 
 // Out returns an output channel for sending data
-func (fs *FileSource) Out() <-chan interface{} {
+func (fs *FileSource) Out() <-chan any {
 	return fs.in
 }
 
 // FileSink represents an outbound connector that writes items to a file.
 type FileSink struct {
 	fileName string
-	in       chan interface{}
+	in       chan any
 }
 
 // NewFileSink returns a new FileSink instance.
 func NewFileSink(fileName string) *FileSink {
 	sink := &FileSink{
 		fileName: fileName,
-		in:       make(chan interface{}),
+		in:       make(chan any),
 	}
 	sink.init()
 	return sink
@@ -97,6 +97,6 @@ func (fs *FileSink) init() {
 }
 
 // In returns an input channel for receiving data
-func (fs *FileSink) In() chan<- interface{} {
+func (fs *FileSink) In() chan<- any {
 	return fs.in
 }

@@ -32,10 +32,10 @@ var addUTC = func(msg *message) *message {
 	return msg
 }
 
-func tickerChan(repeat time.Duration) chan interface{} {
+func tickerChan(repeat time.Duration) chan any {
 	ticker := time.NewTicker(repeat)
 	oc := ticker.C
-	nc := make(chan interface{})
+	nc := make(chan any)
 	go func() {
 		for range oc {
 			nc <- &message{strconv.FormatInt(time.Now().UnixNano(), 10)}

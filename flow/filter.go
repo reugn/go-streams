@@ -18,8 +18,8 @@ type FilterPredicate[T any] func(T) bool
 // out -- 1 -- 2 ------------------ 5 --
 type Filter[T any] struct {
 	filterPredicate FilterPredicate[T]
-	in              chan interface{}
-	out             chan interface{}
+	in              chan any
+	out             chan any
 	parallelism     uint
 }
 
@@ -33,8 +33,8 @@ var _ streams.Flow = (*Filter[any])(nil)
 func NewFilter[T any](filterPredicate FilterPredicate[T], parallelism uint) *Filter[T] {
 	filter := &Filter[T]{
 		filterPredicate: filterPredicate,
-		in:              make(chan interface{}),
-		out:             make(chan interface{}),
+		in:              make(chan any),
+		out:             make(chan any),
 		parallelism:     parallelism,
 	}
 	go filter.doStream()
@@ -54,12 +54,12 @@ func (f *Filter[T]) To(sink streams.Sink) {
 }
 
 // Out returns an output channel for sending data
-func (f *Filter[T]) Out() <-chan interface{} {
+func (f *Filter[T]) Out() <-chan any {
 	return f.out
 }
 
 // In returns an input channel for receiving data
-func (f *Filter[T]) In() chan<- interface{} {
+func (f *Filter[T]) In() chan<- any {
 	return f.in
 }
 

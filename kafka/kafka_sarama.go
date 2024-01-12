@@ -18,7 +18,7 @@ type KafkaSource struct {
 	consumer  sarama.ConsumerGroup
 	handler   sarama.ConsumerGroupHandler
 	topics    []string
-	out       chan interface{}
+	out       chan any
 	ctx       context.Context
 	cancelCtx context.CancelFunc
 	wg        *sync.WaitGroup
@@ -32,7 +32,7 @@ func NewKafkaSource(ctx context.Context, addrs []string, groupID string,
 		return nil, err
 	}
 
-	out := make(chan interface{})
+	out := make(chan any)
 	cctx, cancel := context.WithCancel(ctx)
 
 	sink := &KafkaSource{
@@ -99,14 +99,14 @@ func (ks *KafkaSource) Via(_flow streams.Flow) streams.Flow {
 }
 
 // Out returns an output channel for sending data
-func (ks *KafkaSource) Out() <-chan interface{} {
+func (ks *KafkaSource) Out() <-chan any {
 	return ks.out
 }
 
 // GroupHandler represents a Sarama consumer group handler
 type GroupHandler struct {
 	ready chan struct{}
-	out   chan interface{}
+	out   chan any
 }
 
 // Setup is run at the beginning of a new session, before ConsumeClaim
@@ -143,7 +143,7 @@ func (handler *GroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, c
 type KafkaSink struct {
 	producer sarama.SyncProducer
 	topic    string
-	in       chan interface{}
+	in       chan any
 }
 
 // NewKafkaSink returns a new KafkaSink instance.
@@ -156,7 +156,7 @@ func NewKafkaSink(addrs []string, config *sarama.Config, topic string) (*KafkaSi
 	sink := &KafkaSink{
 		producer: producer,
 		topic:    topic,
-		in:       make(chan interface{}),
+		in:       make(chan any),
 	}
 
 	go sink.init()
@@ -200,6 +200,6 @@ func (ks *KafkaSink) init() {
 }
 
 // In returns an input channel for receiving data
-func (ks *KafkaSink) In() chan<- interface{} {
+func (ks *KafkaSink) In() chan<- any {
 	return ks.in
 }

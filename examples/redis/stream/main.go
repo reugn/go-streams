@@ -59,7 +59,7 @@ func main() {
 
 var toUpper = func(msg *redis.XMessage) *redis.XMessage {
 	fmt.Printf("Got: %v\n", msg.Values)
-	values := make(map[string]interface{}, len(msg.Values))
+	values := make(map[string]any, len(msg.Values))
 	for key, element := range msg.Values {
 		values[key] = strings.ToUpper(fmt.Sprintf("%v", element))
 	}

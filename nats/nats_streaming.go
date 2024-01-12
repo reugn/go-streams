@@ -21,7 +21,7 @@ type StreamingSource struct {
 	subscriptionType stan.SubscriptionOption
 
 	topics    []string
-	out       chan interface{}
+	out       chan any
 	ctx       context.Context
 	cancelCtx context.CancelFunc
 	wg        *sync.WaitGroup
@@ -37,7 +37,7 @@ func NewStreamingSource(ctx context.Context, conn stan.Conn, subscriptionType st
 		subscriptions:    []stan.Subscription{},
 		subscriptionType: subscriptionType,
 		topics:           topics,
-		out:              make(chan interface{}),
+		out:              make(chan any),
 		ctx:              cctx,
 		cancelCtx:        cancel,
 		wg:               &sync.WaitGroup{},
@@ -112,7 +112,7 @@ func (ns *StreamingSource) Via(_flow streams.Flow) streams.Flow {
 }
 
 // Out returns the output channel for the data
-func (ns *StreamingSource) Out() <-chan interface{} {
+func (ns *StreamingSource) Out() <-chan any {
 	return ns.out
 }
 
@@ -121,7 +121,7 @@ func (ns *StreamingSource) Out() <-chan interface{} {
 type StreamingSink struct {
 	conn  stan.Conn
 	topic string
-	in    chan interface{}
+	in    chan any
 }
 
 // NewStreamingSink returns a new StreamingSink instance.
@@ -129,7 +129,7 @@ func NewStreamingSink(conn stan.Conn, topic string) *StreamingSink {
 	streamingSink := &StreamingSink{
 		conn:  conn,
 		topic: topic,
-		in:    make(chan interface{}),
+		in:    make(chan any),
 	}
 
 	go streamingSink.init()
@@ -160,6 +160,6 @@ func (ns *StreamingSink) init() {
 }
 
 // In returns an input channel for receiving data
-func (ns *StreamingSink) In() chan<- interface{} {
+func (ns *StreamingSink) In() chan<- any {
 	return ns.in
 }

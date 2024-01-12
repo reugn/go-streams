@@ -10,8 +10,8 @@ import (
 )
 
 func TestThrottlerWithBackpressure(t *testing.T) {
-	in := make(chan interface{})
-	out := make(chan interface{})
+	in := make(chan any)
+	out := make(chan any)
 
 	interval := 10 * time.Millisecond
 	source := ext.NewChanSource(in)
@@ -27,30 +27,30 @@ func TestThrottlerWithBackpressure(t *testing.T) {
 	}()
 
 	outputValues := readValues(interval/2, out)
-	assertEquals(t, []interface{}{"a", "b"}, outputValues)
+	assertEquals(t, []any{"a", "b"}, outputValues)
 	fmt.Println(outputValues)
 
 	outputValues = readValues(interval, out)
 	fmt.Println(outputValues)
-	assertEquals(t, []interface{}{"c", "d"}, outputValues)
+	assertEquals(t, []any{"c", "d"}, outputValues)
 
 	outputValues = readValues(interval, out)
 	fmt.Println(outputValues)
-	assertEquals(t, []interface{}{"e", "f"}, outputValues)
+	assertEquals(t, []any{"e", "f"}, outputValues)
 
 	outputValues = readValues(interval, out)
 	fmt.Println(outputValues)
-	assertEquals(t, []interface{}{"g"}, outputValues)
+	assertEquals(t, []any{"g"}, outputValues)
 
 	outputValues = readValues(interval, out)
 	fmt.Println(outputValues)
-	var empty []interface{}
+	var empty []any
 	assertEquals(t, empty, outputValues)
 }
 
 func TestThrottlerWithDiscard(t *testing.T) {
-	in := make(chan interface{}, 7)
-	out := make(chan interface{}, 7)
+	in := make(chan any, 7)
+	out := make(chan any, 7)
 
 	interval := 20 * time.Millisecond
 	source := ext.NewChanSource(in)
@@ -66,7 +66,7 @@ func TestThrottlerWithDiscard(t *testing.T) {
 	}()
 
 	outputValues := readValues(interval/2, out)
-	assertEquals(t, []interface{}{"a", "b"}, outputValues)
+	assertEquals(t, []any{"a", "b"}, outputValues)
 	fmt.Println(outputValues)
 
 	outputValues = readValues(interval, out)
@@ -74,19 +74,19 @@ func TestThrottlerWithDiscard(t *testing.T) {
 
 	outputValues = readValues(interval, out)
 	fmt.Println(outputValues)
-	var empty []interface{}
+	var empty []any
 	assertEquals(t, empty, outputValues)
 }
 
-func writeValues(in chan interface{}) {
+func writeValues(in chan any) {
 	inputValues := []string{"a", "b", "c", "d", "e", "f", "g"}
 	ingestSlice(inputValues, in)
 	close(in)
 	fmt.Println("Closed input channel")
 }
 
-func readValues(timeout time.Duration, out <-chan interface{}) []interface{} {
-	var outputValues []interface{}
+func readValues(timeout time.Duration, out <-chan any) []any {
+	var outputValues []any
 	timer := time.NewTimer(timeout)
 	for {
 		select {

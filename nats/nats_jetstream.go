@@ -20,7 +20,7 @@ type JetStreamSource struct {
 	conn             *nats.Conn
 	jetStreamContext nats.JetStreamContext
 	subscription     *nats.Subscription
-	out              chan interface{}
+	out              chan any
 	ctx              context.Context
 }
 
@@ -47,7 +47,7 @@ func NewJetStreamSource(ctx context.Context, subjectName, url string) (*JetStrea
 		conn:             nc,
 		jetStreamContext: js,
 		subscription:     sub,
-		out:              make(chan interface{}),
+		out:              make(chan any),
 		ctx:              ctx,
 	}
 
@@ -91,7 +91,7 @@ func (js *JetStreamSource) Via(_flow streams.Flow) streams.Flow {
 }
 
 // Out returns an output channel for sending data
-func (js *JetStreamSource) Out() <-chan interface{} {
+func (js *JetStreamSource) Out() <-chan any {
 	return js.out
 }
 
@@ -100,7 +100,7 @@ type JetStreamSink struct {
 	conn             *nats.Conn
 	jetStreamContext nats.JetStreamContext
 	subjectName      string
-	in               chan interface{}
+	in               chan any
 }
 
 // NewNatsSink returns a new JetStreamSource instance.
@@ -135,7 +135,7 @@ func NewJetStreamSink(streamName, subjectName, url string) (*JetStreamSink, erro
 		conn:             nc,
 		jetStreamContext: js,
 		subjectName:      subjectName,
-		in:               make(chan interface{}),
+		in:               make(chan any),
 	}
 
 	go jetStreamSink.init()
@@ -168,6 +168,6 @@ func (js *JetStreamSink) init() {
 }
 
 // In returns an input channel for receiving data
-func (js *JetStreamSink) In() chan<- interface{} {
+func (js *JetStreamSink) In() chan<- any {
 	return js.in
 }

@@ -10,9 +10,8 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/stan.go"
 	"github.com/reugn/go-streams/extension"
-	ext "github.com/reugn/go-streams/nats"
-
 	"github.com/reugn/go-streams/flow"
+	ext "github.com/reugn/go-streams/nats"
 )
 
 func main() {
@@ -34,17 +33,75 @@ func jetStream() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	fileSource := extension.NewFileSource("in.txt")
-	toUpperMapFlow := flow.NewMap(toUpperString, 1)
-	jetSink, err := ext.NewJetStreamSink("stream1", "stream1.subject1", "nats://localhost:4222")
+	// connect to the NATS server
+	nc, err := nats.Connect("nats://localhost:4222")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	jetSource, err := ext.NewJetStreamSource(ctx, "stream1.subject1", "nats://localhost:4222")
+	// create JetStreamContext
+	js, err := nc.JetStream()
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	streamName := "stream1"
+	subjectName := "stream1.subject1"
+
+	// check if the stream already exists; if not, create it
+	stream, _ := js.StreamInfo(streamName)
+	if stream == nil {
+		// create stream
+		// for the set of stream configuration options, see:
+		// https://docs.nats.io/nats-concepts/jetstream/streams#configuration
+		_, err = js.AddStream(&nats.StreamConfig{
+			Name:                 streamName,
+			Subjects:             []string{subjectName},
+			DiscardNewPerSubject: true, // exactly-once semantics
+			MaxMsgsPerSubject:    1024,
+			Discard:              nats.DiscardNew,
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("Stream %s has been created", streamName)
+	}
+
+	// create a new JetStream source connector
+	sourceConfig := &ext.JetStreamSourceConfig{
+		Conn:           nc,
+		JetStreamCtx:   js,
+		Subject:        subjectName,
+		ConsumerName:   "JetStreamSource",
+		FetchBatchSize: 64,
+		Ack:            true,
+		SubOpts: []nats.SubOpt{
+			nats.PullMaxWaiting(128),
+		},
+		PullOpts: []nats.PullOpt{
+			nats.Context(ctx), // sets deadline for fetch
+		},
+	}
+	jetSource, err := ext.NewJetStreamSource(ctx, sourceConfig)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fileSource := extension.NewFileSource("in.txt")
+	toUpperMapFlow := flow.NewMap(toUpperString, 1)
+
+	// create a new JetStream sink connector
+	sinkConfig := &ext.JetStreamSinkConfig{
+		Conn:         nc,
+		JetStreamCtx: js,
+		Subject:      subjectName,
+		PubOpts:      []nats.PubOpt{nats.Context(ctx)},
+	}
+	jetSink, err := ext.NewJetStreamSink(sinkConfig)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	fetchJetMsgMapFlow := flow.NewMap(fetchJetMsg, 1)
 	stdOutSInk := extension.NewStdoutSink()
 

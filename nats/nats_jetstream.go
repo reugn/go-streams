@@ -2,6 +2,7 @@ package nats
 
 import (
 	"context"
+	"errors"
 	"log"
 
 	"github.com/nats-io/nats.go"
@@ -9,165 +10,231 @@ import (
 	"github.com/reugn/go-streams/flow"
 )
 
-var (
-	PullMaxWaiting = 128
-	FetchBatchSize = 16
-)
-
-// JetStreamSource represents a NATS JetStream source connector.
-// Uses a pull-based consumer.
-type JetStreamSource struct {
-	conn             *nats.Conn
-	jetStreamContext nats.JetStreamContext
-	subscription     *nats.Subscription
-	out              chan any
-	ctx              context.Context
+// JetStreamSourceConfig specifies parameters for the JetStream source connector.
+// Use NewJetStreamSourceConfig to create a new JetStreamSourceConfig with default values.
+type JetStreamSourceConfig struct {
+	Conn           *nats.Conn
+	JetStreamCtx   nats.JetStreamContext
+	Subject        string
+	ConsumerName   string         // For an ephemeral pull consumer use an empty string.
+	FetchBatchSize int            // FetchBatchSize is used by the pull consumer.
+	Ack            bool           // Ack determines whether to acknowledge delivered messages by the consumer.
+	SubOpts        []nats.SubOpt  // SubOpt configures options for subscribing to JetStream consumers.
+	PullOpts       []nats.PullOpt // PullOpt are the options that can be passed when pulling a batch of messages.
+	AckOpts        []nats.AckOpt  // AckOpt are the options that can be passed when acknowledge a message.
 }
 
-// NewNatsSink returns a new JetStreamSource instance.
-func NewJetStreamSource(ctx context.Context, subjectName, url string) (*JetStreamSource, error) {
-	nc, err := nats.Connect(url)
+// validate validates the JetStream source configuration values.
+func (config *JetStreamSourceConfig) validate() error {
+	if config == nil {
+		return errors.New("config is nil")
+	}
+	if config.Conn == nil {
+		return errors.New("connection is nil")
+	}
+	if config.JetStreamCtx == nil {
+		return errors.New("JetStream context is nil")
+	}
+	if config.Subject == "" {
+		return errors.New("subject is empty")
+	}
+	if config.FetchBatchSize < 1 {
+		return errors.New("nonpositive fetch batch size")
+	}
+	if config.SubOpts == nil {
+		config.SubOpts = []nats.SubOpt{}
+	}
+	if config.PullOpts == nil {
+		config.PullOpts = []nats.PullOpt{}
+	}
+	if config.AckOpts == nil {
+		config.AckOpts = []nats.AckOpt{}
+	}
+	return nil
+}
+
+// NewJetStreamSourceConfig returns a new JetStreamSourceConfig with default values.
+func NewJetStreamSourceConfig(conn *nats.Conn, jetStreamContext nats.JetStreamContext,
+	subject string) *JetStreamSourceConfig {
+	return &JetStreamSourceConfig{
+		Conn:           conn,
+		JetStreamCtx:   jetStreamContext,
+		Subject:        subject,
+		FetchBatchSize: 256,
+		Ack:            true,
+	}
+}
+
+// JetStreamSource represents a NATS JetStream source connector.
+type JetStreamSource struct {
+	config       *JetStreamSourceConfig
+	subscription *nats.Subscription
+	out          chan any
+}
+
+// NewJetStreamSource returns a new JetStreamSource connector.
+// A pull-based subscription is used to consume data from the subject.
+func NewJetStreamSource(ctx context.Context, config *JetStreamSourceConfig) (*JetStreamSource, error) {
+	// create a pull based consumer
+	subscription, err := config.JetStreamCtx.PullSubscribe(config.Subject,
+		config.ConsumerName, config.SubOpts...)
 	if err != nil {
 		return nil, err
 	}
-
-	// create JetStreamContext
-	js, err := nc.JetStream()
-	if err != nil {
-		return nil, err
-	}
-
-	// create pull based consumer
-	sub, err := js.PullSubscribe(subjectName, "JetStreamSource", nats.PullMaxWaiting(PullMaxWaiting))
-	if err != nil {
+	if err := config.validate(); err != nil {
 		return nil, err
 	}
 
 	jetStreamSource := &JetStreamSource{
-		conn:             nc,
-		jetStreamContext: js,
-		subscription:     sub,
-		out:              make(chan any),
-		ctx:              ctx,
+		config:       config,
+		subscription: subscription,
+		out:          make(chan any),
 	}
 
-	go jetStreamSource.init()
+	go jetStreamSource.init(ctx)
 	return jetStreamSource, nil
 }
 
-func (js *JetStreamSource) init() {
+// init starts the stream processing loop.
+func (js *JetStreamSource) init(ctx context.Context) {
 loop:
 	for {
 		select {
-		case <-js.ctx.Done():
+		case <-ctx.Done():
 			break loop
 		default:
 		}
-
-		messages, err := js.subscription.Fetch(FetchBatchSize, nats.Context(js.ctx))
+		// pull a batch of messages from the stream
+		messages, err := js.subscription.Fetch(js.config.FetchBatchSize, js.config.PullOpts...)
 		if err != nil {
-			log.Printf("JetStreamSource fetch error: %s", err)
+			log.Printf("JetStream source connector fetch error: %s", err)
 			break loop
 		}
+		if len(messages) == 0 {
+			log.Print("Message batch is empty")
+			continue
+		}
 		for _, msg := range messages {
-			if err := msg.Ack(); err != nil {
-				log.Printf("Failed to Ack JetStream message: %s", err)
-			}
+			// send the message downstream
 			js.out <- msg
+			if js.config.Ack {
+				// acknowledge the message
+				if err := msg.Ack(js.config.AckOpts...); err != nil {
+					log.Printf("Failed to acknowledge JetStream message: %s", err)
+				}
+			} else {
+				// reset the redelivery timer on the server
+				if err := msg.InProgress(js.config.AckOpts...); err != nil {
+					log.Printf("Failed to set JetStream message in progress: %s", err)
+				}
+			}
 		}
 	}
 
-	log.Printf("Closing JetStream consumer")
 	if err := js.subscription.Drain(); err != nil {
-		log.Printf("Failed to Drain JetStream subscription: %s", err)
+		log.Printf("Failed to drain JetStream subscription: %s", err)
 	}
 	close(js.out)
+	log.Print("JetStream consumer closed")
 }
 
-// Via streams data through the given flow
-func (js *JetStreamSource) Via(_flow streams.Flow) streams.Flow {
-	flow.DoStream(js, _flow)
-	return _flow
+// Via streams data to a specified operator and returns it.
+func (js *JetStreamSource) Via(operator streams.Flow) streams.Flow {
+	flow.DoStream(js, operator)
+	return operator
 }
 
-// Out returns an output channel for sending data
+// Out returns the output channel of the JetStreamSource connector.
 func (js *JetStreamSource) Out() <-chan any {
 	return js.out
 }
 
-// JetStreamSink represents a NATS JetStream sink connector.
-type JetStreamSink struct {
-	conn             *nats.Conn
-	jetStreamContext nats.JetStreamContext
-	subjectName      string
-	in               chan any
+// JetStreamSinkConfig specifies parameters for the JetStream sink connector.
+type JetStreamSinkConfig struct {
+	Conn         *nats.Conn
+	JetStreamCtx nats.JetStreamContext
+	Subject      string
+	DrainConn    bool          // Determines whether to drain the connection when the upstream is closed.
+	PubOpts      []nats.PubOpt // PubOpt configures options for publishing JetStream messages.
 }
 
-// NewNatsSink returns a new JetStreamSource instance.
-func NewJetStreamSink(streamName, subjectName, url string) (*JetStreamSink, error) {
-	nc, err := nats.Connect(url)
-	if err != nil {
-		return nil, err
+// validate validates the JetStream sink configuration values.
+func (config *JetStreamSinkConfig) validate() error {
+	if config == nil {
+		return errors.New("config is nil")
 	}
-
-	// create JetStreamContext
-	js, err := nc.JetStream()
-	if err != nil {
-		return nil, err
+	if config.Conn == nil {
+		return errors.New("connection is nil")
 	}
+	if config.JetStreamCtx == nil {
+		return errors.New("JetStream context is nil")
+	}
+	if config.Subject == "" {
+		return errors.New("subject is empty")
+	}
+	if config.PubOpts == nil {
+		config.PubOpts = []nats.PubOpt{}
+	}
+	return nil
+}
 
-	// check if the given stream already exists; if not, create it.
-	stream, _ := js.StreamInfo(streamName)
-	if stream == nil {
-		log.Printf("Creating JetStream %s with subject %s", streamName, subjectName)
-		_, err = js.AddStream(&nats.StreamConfig{
-			Name:     streamName,
-			Subjects: []string{subjectName},
-		})
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		log.Printf("JetStream %s exists", streamName)
+// JetStreamSink represents a NATS JetStream sink connector.
+type JetStreamSink struct {
+	config *JetStreamSinkConfig
+	in     chan any
+}
+
+// NewJetStreamSink returns a new JetStreamSink connector.
+// The stream for the configured subject is expected to exist.
+func NewJetStreamSink(config *JetStreamSinkConfig) (*JetStreamSink, error) {
+	if err := config.validate(); err != nil {
+		return nil, err
 	}
 
 	jetStreamSink := &JetStreamSink{
-		conn:             nc,
-		jetStreamContext: js,
-		subjectName:      subjectName,
-		in:               make(chan any),
+		config: config,
+		in:     make(chan any),
 	}
 
 	go jetStreamSink.init()
 	return jetStreamSink, nil
 }
 
+// init starts the stream processing loop.
 func (js *JetStreamSink) init() {
 	for msg := range js.in {
 		var err error
-		switch m := msg.(type) {
+		switch message := msg.(type) {
 		case *nats.Msg:
-			_, err = js.jetStreamContext.Publish(js.subjectName, m.Data)
+			_, err = js.config.JetStreamCtx.Publish(
+				js.config.Subject,
+				message.Data,
+				js.config.PubOpts...)
 
 		case []byte:
-			_, err = js.jetStreamContext.Publish(js.subjectName, m)
+			_, err = js.config.JetStreamCtx.Publish(
+				js.config.Subject,
+				message,
+				js.config.PubOpts...)
 
 		default:
-			log.Printf("Unsupported message type %v", m)
+			log.Printf("Unsupported message type: %T", message)
 		}
-
 		if err != nil {
 			log.Printf("Error processing JetStream message: %s", err)
 		}
 	}
 
-	log.Printf("Closing JetStream producer")
-	if err := js.conn.Drain(); err != nil {
-		log.Printf("Failed to Drain JetStream connection: %s", err)
+	if js.config.DrainConn {
+		// puts all subscriptions into a drain state
+		if err := js.config.Conn.Drain(); err != nil {
+			log.Printf("Failed to drain JetStream connection: %s", err)
+		}
 	}
+	log.Print("JetStream producer closed")
 }
 
-// In returns an input channel for receiving data
+// In returns the input channel of the JetStreamSink connector.
 func (js *JetStreamSink) In() chan<- any {
 	return js.in
 }

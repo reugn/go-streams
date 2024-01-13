@@ -67,7 +67,6 @@ func NewJetStreamSourceConfig(conn *nats.Conn, jetStreamContext nats.JetStreamCo
 
 // JetStreamSource represents a NATS JetStream source connector.
 type JetStreamSource struct {
-	ctx          context.Context
 	config       *JetStreamSourceConfig
 	subscription *nats.Subscription
 	out          chan any
@@ -87,22 +86,21 @@ func NewJetStreamSource(ctx context.Context, config *JetStreamSourceConfig) (*Je
 	}
 
 	jetStreamSource := &JetStreamSource{
-		ctx:          ctx,
 		config:       config,
 		subscription: subscription,
 		out:          make(chan any),
 	}
 
-	go jetStreamSource.init()
+	go jetStreamSource.init(ctx)
 	return jetStreamSource, nil
 }
 
 // init starts the stream processing loop.
-func (js *JetStreamSource) init() {
+func (js *JetStreamSource) init(ctx context.Context) {
 loop:
 	for {
 		select {
-		case <-js.ctx.Done():
+		case <-ctx.Done():
 			break loop
 		default:
 		}

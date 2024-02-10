@@ -17,6 +17,7 @@ func TestSlidingWindow(t *testing.T) {
 	source := ext.NewChanSource(in)
 	slidingWindow := flow.NewSlidingWindow[string](50*time.Millisecond, 20*time.Millisecond)
 	sink := ext.NewChanSink(out)
+	assert.NotEqual(t, slidingWindow.Out(), nil)
 
 	go func() {
 		inputValues := []string{"a", "b", "c", "d", "e", "f", "g"}

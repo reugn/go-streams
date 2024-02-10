@@ -17,6 +17,7 @@ func TestTumblingWindow(t *testing.T) {
 	source := ext.NewChanSource(in)
 	tumblingWindow := flow.NewTumblingWindow[string](50 * time.Millisecond)
 	sink := ext.NewChanSink(out)
+	assert.NotEqual(t, tumblingWindow.Out(), nil)
 
 	go func() {
 		inputValues := []string{"a", "b", "c", "d", "e", "f", "g"}

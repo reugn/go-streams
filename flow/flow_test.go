@@ -74,6 +74,7 @@ func TestComplexFlow(t *testing.T) {
 	go func() {
 		source.
 			Via(toUpperMapFlow).
+			Via(flow.NewPassThrough()).
 			Via(appendAsteriskFlatMapFlow).
 			Via(tumblingWindow).
 			Via(flow.Flatten[string](1)).
@@ -200,6 +201,7 @@ func TestReduceFlow(t *testing.T) {
 
 	source.
 		Via(reduceFlow).
+		Via(flow.NewPassThrough()).
 		To(sink)
 
 	var outputValues []int

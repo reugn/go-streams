@@ -18,6 +18,7 @@ func TestThrottlerWithBackpressure(t *testing.T) {
 	source := ext.NewChanSource(in)
 	throttler := flow.NewThrottler(2, interval, 2, flow.Backpressure)
 	sink := ext.NewChanSink(out)
+	assert.NotEqual(t, throttler.Out(), nil)
 
 	go writeValues(in)
 

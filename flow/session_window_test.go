@@ -17,6 +17,7 @@ func TestSessionWindow(t *testing.T) {
 	source := ext.NewChanSource(in)
 	sessionWindow := flow.NewSessionWindow[string](20 * time.Millisecond)
 	sink := ext.NewChanSink(out)
+	assert.NotEqual(t, sessionWindow.Out(), nil)
 
 	inputValues := []string{"a", "b", "c"}
 	go ingestSlice(inputValues, in)

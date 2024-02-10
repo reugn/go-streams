@@ -17,6 +17,7 @@ func TestBatch(t *testing.T) {
 	source := ext.NewChanSource(in)
 	batch := flow.NewBatch[string](4, 40*time.Millisecond)
 	sink := ext.NewChanSink(out)
+	assert.NotEqual(t, batch.Out(), nil)
 
 	inputValues := []string{"a", "b", "c", "d", "e", "f", "g"}
 	go func() {

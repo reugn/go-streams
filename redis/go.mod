@@ -3,8 +3,8 @@ module github.com/reugn/go-streams/redis
 go 1.18
 
 require (
-	github.com/redis/go-redis/v9 v9.0.5
-	github.com/reugn/go-streams v0.9.0
+	github.com/redis/go-redis/v9 v9.5.1
+	github.com/reugn/go-streams v0.10.0
 )
 
 require (

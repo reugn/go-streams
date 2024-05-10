@@ -5,9 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"log"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	aero "github.com/aerospike/aerospike-client-go/v6"
@@ -15,219 +12,290 @@ import (
 	"github.com/reugn/go-streams/flow"
 )
 
-// AerospikeProperties represents configuration properties for an Aerospike connector.
-type AerospikeProperties struct {
-	Policy    *aero.ClientPolicy
-	Hostname  string
-	Port      int
-	Namespase string
-	SetName   string
-}
-
-// ChangeNotificationProperties contains the configuration for polling Aerospike cluster events.
-type ChangeNotificationProperties struct {
+// PollingConfig contains the configuration for polling Aerospike cluster events.
+type PollingConfig struct {
+	// PollingInterval specifies the interval at which the database should be
+	// polled for changes. If not specified, the entire dataset will be queried
+	// once.
 	PollingInterval time.Duration
+	// QueryPolicy encapsulates parameters for policy attributes used in query
+	// operations (optional).
+	QueryPolicy *aero.QueryPolicy
+	// SecondaryIndexFilter specifies a query filter definition (optional).
+	SecondaryIndexFilter *aero.Filter
+	// Namespace determines query namespace.
+	Namespace string
+	// SetName determines query set name (optional).
+	SetName string
+	// BinNames detemines which bins to retrieve (optional).
+	BinNames []string
+
+	filterExpression *aero.Expression
 }
 
-// AerospikeSource represents an Aerospike source connector.
-type AerospikeSource struct {
-	client                       *aero.Client
-	recordsChannel               chan *aero.Result
-	scanPolicy                   *aero.ScanPolicy
-	out                          chan any
-	ctx                          context.Context
-	properties                   *AerospikeProperties
-	changeNotificationProperties *ChangeNotificationProperties
+// PollingSource is an Aerospike source connector that regularly checks the
+// database and transmits any recently updated records downstream.
+type PollingSource struct {
+	client      *aero.Client
+	config      PollingConfig
+	statement   *aero.Statement
+	recordsChan chan *aero.Result
+	out         chan any
 }
 
-// NewAerospikeSource returns a new AerospikeSource instance.
-// Set changeNotificationProperties to nil to scan the entire namespace/set.
-func NewAerospikeSource(ctx context.Context,
-	properties *AerospikeProperties,
-	scanPolicy *aero.ScanPolicy,
-	changeNotificationProperties *ChangeNotificationProperties) (*AerospikeSource, error) {
+var _ streams.Source = (*PollingSource)(nil)
 
-	client, err := aero.NewClientWithPolicy(properties.Policy, properties.Hostname, properties.Port)
-	if err != nil {
-		return nil, err
+// NewPollingSource returns a new PollingSource instance.
+func NewPollingSource(ctx context.Context, client *aero.Client,
+	config PollingConfig) *PollingSource {
+	if config.QueryPolicy == nil {
+		config.QueryPolicy = aero.NewQueryPolicy()
+	} else {
+		config.filterExpression = config.QueryPolicy.FilterExpression
+	}
+	statement := &aero.Statement{
+		Namespace: config.Namespace,
+		SetName:   config.SetName,
+		Filter:    config.SecondaryIndexFilter,
+		BinNames:  config.BinNames,
+	}
+	source := &PollingSource{
+		client:      client,
+		config:      config,
+		statement:   statement,
+		recordsChan: make(chan *aero.Result),
+		out:         make(chan any),
 	}
 
-	if scanPolicy == nil {
-		scanPolicy = aero.NewScanPolicy()
-	}
+	go source.pollChanges(ctx)
+	go source.streamRecords(ctx)
 
-	records := make(chan *aero.Result)
-	source := &AerospikeSource{
-		client:                       client,
-		recordsChannel:               records,
-		scanPolicy:                   scanPolicy,
-		out:                          make(chan any),
-		ctx:                          ctx,
-		properties:                   properties,
-		changeNotificationProperties: changeNotificationProperties,
-	}
-
-	go source.poll()
-	go source.init()
-	return source, nil
+	return source
 }
 
-func (as *AerospikeSource) poll() {
-	if as.changeNotificationProperties == nil {
-		// scan the entire namespace/set
-		as.doScan()
-		close(as.recordsChannel)
+func (ps *PollingSource) pollChanges(ctx context.Context) {
+	if ps.config.PollingInterval == 0 {
+		// retrieve the entire namespace/set once
+		ps.query()
+		close(ps.recordsChan)
 		return
 	}
 
-	// get change notifications by polling
-	ticker := time.NewTicker(as.changeNotificationProperties.PollingInterval)
+	// obtain updates about data changes through scheduled queries
+	ticker := time.NewTicker(ps.config.PollingInterval)
+	defer ticker.Stop()
 loop:
 	for {
 		select {
-		case <-as.ctx.Done():
+		case <-ctx.Done():
 			break loop
-
 		case t := <-ticker.C:
-			ts := t.UnixNano() - as.changeNotificationProperties.PollingInterval.Nanoseconds()
-			as.scanPolicy.FilterExpression = aero.ExpGreater(
+			lastUpdate := t.Add(-ps.config.PollingInterval)
+			// filter records by the time they were last updated
+			lastUpdatedExp := aero.ExpGreater(
 				aero.ExpLastUpdate(),
-				aero.ExpIntVal(ts),
+				aero.ExpIntVal(lastUpdate.UnixNano()),
 			)
-			log.Printf("Polling records from %d", ts)
-
-			as.doScan()
+			if ps.config.filterExpression == nil {
+				ps.config.QueryPolicy.FilterExpression = lastUpdatedExp
+			} else {
+				ps.config.QueryPolicy.FilterExpression = aero.ExpAnd(
+					lastUpdatedExp,
+					ps.config.filterExpression,
+				)
+			}
+			log.Printf("Polling records from: %s", lastUpdate)
+			// execute the query command
+			ps.query()
 		}
 	}
 }
 
-func (as *AerospikeSource) doScan() {
-	recordSet, err := as.client.ScanAll(as.scanPolicy, as.properties.Namespase, as.properties.SetName)
+func (ps *PollingSource) query() {
+	recordSet, err := ps.client.Query(ps.config.QueryPolicy, ps.statement)
 	if err != nil {
-		log.Printf("Aerospike client.ScanAll failed with: %s", err)
-	} else {
-		for result := range recordSet.Results() {
-			as.recordsChannel <- result
-		}
+		log.Printf("Aerospike polling query failed: %s", err)
+		return
+	}
+	for result := range recordSet.Results() {
+		ps.recordsChan <- result
 	}
 }
 
-// init starts the main loop
-func (as *AerospikeSource) init() {
-	sigchan := make(chan os.Signal, 1)
-	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
-
+func (ps *PollingSource) streamRecords(ctx context.Context) {
 loop:
 	for {
 		select {
-		case <-sigchan:
+		case <-ctx.Done():
 			break loop
-
-		case <-as.ctx.Done():
-			break loop
-
-		case result, ok := <-as.recordsChannel:
+		case result, ok := <-ps.recordsChan:
 			if !ok {
 				break loop
 			}
 			if result.Err == nil {
-				as.out <- result.Record
+				ps.out <- result.Record // send the record downstream
 			} else {
-				log.Printf("Aerospike scan record error %s", result.Err)
+				log.Printf("Aerospike query record error: %s", result.Err)
 			}
 		}
 	}
-
-	log.Printf("Closing Aerospike consumer")
-	close(as.out)
-	as.client.Close()
+	log.Printf("Closing Aerospike polling connector")
+	close(ps.out)
 }
 
-// Via streams data through the given flow
-func (as *AerospikeSource) Via(_flow streams.Flow) streams.Flow {
-	flow.DoStream(as, _flow)
-	return _flow
+// Via streams data to a specified operator and returns it.
+func (ps *PollingSource) Via(operator streams.Flow) streams.Flow {
+	flow.DoStream(ps, operator)
+	return operator
 }
 
-// Out returns an output channel for sending data
-func (as *AerospikeSource) Out() <-chan any {
-	return as.out
+// Out returns the output channel of the PollingSource connector.
+func (ps *PollingSource) Out() <-chan any {
+	return ps.out
 }
 
-// AerospikeKeyBins represents an Aerospike Key and BinMap container.
-// Use it to stream records to an AerospikeSink.
-type AerospikeKeyBins struct {
+// A Record encapsulates an Aerospike Key and BinMap container.
+// It is intended to be used to stream records to the Aerospike sink connector.
+type Record struct {
 	Key  *aero.Key
 	Bins aero.BinMap
 }
 
-// AerospikeSink represents an Aerospike sink connector.
-type AerospikeSink struct {
-	client      *aero.Client
-	in          chan any
-	ctx         context.Context
-	properties  *AerospikeProperties
-	writePolicy *aero.WritePolicy
+// batchWrite creates and returns a batch write operation for the record.
+func (r *Record) batchWrite(policy *aero.BatchWritePolicy) *aero.BatchWrite {
+	ops := make([]*aero.Operation, 0, len(r.Bins))
+	for k, v := range r.Bins {
+		ops = append(ops, aero.PutOp(aero.NewBin(k, v)))
+	}
+	return aero.NewBatchWrite(policy, r.Key, ops...)
 }
 
-// NewAerospikeSink returns a new AerospikeSink instance.
-func NewAerospikeSink(ctx context.Context,
-	properties *AerospikeProperties, writePolicy *aero.WritePolicy) (*AerospikeSink, error) {
-	client, err := aero.NewClientWithPolicy(properties.Policy, properties.Hostname, properties.Port)
-	if err != nil {
-		return nil, err
-	}
-
-	if writePolicy == nil {
-		writePolicy = aero.NewWritePolicy(0, 0)
-	}
-
-	source := &AerospikeSink{
-		client:      client,
-		in:          make(chan any),
-		ctx:         ctx,
-		properties:  properties,
-		writePolicy: writePolicy,
-	}
-
-	go source.init()
-	return source, nil
+// SinkConfig contains the configuration for the Aerospike sink connector.
+type SinkConfig struct {
+	// WritePolicy encapsulates parameters for policy attributes used in
+	// write operations. Used in single write operations and ignored if
+	// BatchSize is larger than one (optional).
+	WritePolicy *aero.WritePolicy
+	// BatchSize controls the size of the batch when writing records. If not
+	// specified or set to a value less than two, a single write operation
+	// will be used for each record (optional).
+	BatchSize int
+	// BufferFlushInterval defines the maximum duration records can be buffered
+	// before being flushed. Used with BatchSize larger than one (optional).
+	BufferFlushInterval time.Duration
+	// BatchPolicy encapsulates parameters for policy attributes used in
+	// write operations. Used with BatchSize larger than one (optional).
+	BatchPolicy *aero.BatchPolicy
+	// BatchWritePolicy attributes used in batch write commands. Used with
+	// BatchSize larger than one (optional).
+	BatchWritePolicy *aero.BatchWritePolicy
+	// Namespace determines the target namespace.
+	Namespace string
+	// SetName determines the target set name (optional).
+	SetName string
 }
 
-// init starts the main loop
-func (as *AerospikeSink) init() {
-	for msg := range as.in {
-		switch m := msg.(type) {
-		case AerospikeKeyBins:
-			if err := as.client.Put(as.writePolicy, m.Key, m.Bins); err != nil {
-				log.Printf("Aerospike client.Put failed with: %s", err)
+// Sink represents an Aerospike sink connector.
+type Sink struct {
+	client *aero.Client
+	config SinkConfig
+	buf    []*Record
+	in     chan any
+}
+
+var _ streams.Sink = (*Sink)(nil)
+
+// NewSink returns a new Sink instance.
+func NewSink(client *aero.Client, config SinkConfig) *Sink {
+	sink := &Sink{
+		client: client,
+		config: config,
+		in:     make(chan any),
+	}
+	// initialize the buffer for batch writes
+	if config.BatchSize > 1 {
+		sink.buf = make([]*Record, 0, config.BatchSize)
+	}
+	// begin processing upstream records
+	go sink.processStream()
+
+	return sink
+}
+
+func (as *Sink) processStream() {
+	var flushTickerChan <-chan time.Time
+	if as.config.BatchSize > 1 && as.config.BufferFlushInterval > 0 {
+		ticker := time.NewTicker(as.config.BufferFlushInterval)
+		defer ticker.Stop()
+		flushTickerChan = ticker.C
+	}
+loop:
+	for {
+		select {
+		case msg, ok := <-as.in: // read upstream messages
+			if !ok {
+				break loop
 			}
-
-		case aero.BinMap:
-			jsonStr, err := json.Marshal(m)
-			if err == nil {
-				var key *aero.Key
-				// use BinMap sha256 checksum as record key
-				key, err = aero.NewKey(as.properties.Namespase,
-					as.properties.SetName,
-					sha256.Sum256(jsonStr))
+			switch message := msg.(type) {
+			case *Record:
+				as.writeRecord(message)
+			case Record:
+				as.writeRecord(&message)
+			case aero.BinMap:
+				encoded, err := json.Marshal(message)
 				if err == nil {
-					err = as.client.Put(as.writePolicy, key, m)
+					var key *aero.Key
+					// use the sha256 checksum of the bin map as the record key
+					key, err = aero.NewKey(as.config.Namespace, as.config.SetName,
+						sha256.Sum256(encoded))
+					if err == nil {
+						as.writeRecord(&Record{key, message})
+					}
 				}
+				if err != nil {
+					log.Printf("Error parsing bin map: %s", err)
+				}
+			default:
+				log.Printf("Unsupported message type %v", message)
 			}
-
-			if err != nil {
-				log.Printf("Error processing Aerospike message: %s", err)
-			}
-
-		default:
-			log.Printf("Unsupported message type %v", m)
+		case <-flushTickerChan:
+			as.flushBuffer()
 		}
 	}
-	as.client.Close()
+	as.flushBuffer() // write buffered records in batch mode
 }
 
-// In returns an input channel for receiving data
-func (as *AerospikeSink) In() chan<- any {
+func (as *Sink) writeRecord(record *Record) {
+	if as.config.BatchSize > 1 { // batch mode
+		if len(as.buf) == as.config.BatchSize {
+			as.flushBuffer()
+		}
+		// add the record to the buffer
+		as.buf = append(as.buf, record)
+	} else {
+		// use single record put operation
+		if err := as.client.Put(as.config.WritePolicy, record.Key, record.Bins); err != nil {
+			log.Printf("Failed to write record: %s", err)
+		}
+	}
+}
+
+func (as *Sink) flushBuffer() {
+	if as.config.BatchSize > 1 && len(as.buf) > 0 {
+		// write records as a batch
+		records := make([]aero.BatchRecordIfc, 0, as.config.BatchSize)
+		for _, rec := range as.buf {
+			records = append(records, rec.batchWrite(as.config.BatchWritePolicy))
+		}
+		log.Printf("Writing batch of %d records", len(records))
+		if err := as.client.BatchOperate(as.config.BatchPolicy, records); err != nil {
+			log.Printf("Failed to write batch of records: %s", err)
+		}
+		as.buf = as.buf[:0] // clear the buffer
+	}
+}
+
+// In returns the input channel of the Sink connector.
+func (as *Sink) In() chan<- any {
 	return as.in
 }

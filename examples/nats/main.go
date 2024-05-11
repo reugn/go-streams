@@ -29,6 +29,8 @@ func main() {
 }
 
 // docker run --rm --name nats-js -p 4222:4222 nats -js
+//
+//nolint:funlen
 func jetStream() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

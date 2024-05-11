@@ -6,10 +6,9 @@ import (
 	"strings"
 	"time"
 
-	ext "github.com/reugn/go-streams/kafka"
-
 	"github.com/IBM/sarama"
 	"github.com/reugn/go-streams/flow"
+	ext "github.com/reugn/go-streams/kafka"
 )
 
 func main() {
@@ -50,11 +49,11 @@ var toUpper = func(msg *sarama.ConsumerMessage) *sarama.ConsumerMessage {
 	return msg
 }
 
-var appendAsterisk = func(inArr []*sarama.ConsumerMessage) []*sarama.ConsumerMessage {
-	outArr := make([]*sarama.ConsumerMessage, len(inArr))
-	for i, msg := range inArr {
+var appendAsterisk = func(inMessages []*sarama.ConsumerMessage) []*sarama.ConsumerMessage {
+	outMessages := make([]*sarama.ConsumerMessage, len(inMessages))
+	for i, msg := range inMessages {
 		msg.Value = []byte(string(msg.Value) + "*")
-		outArr[i] = msg
+		outMessages[i] = msg
 	}
-	return outArr
+	return outMessages
 }

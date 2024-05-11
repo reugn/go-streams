@@ -1,6 +1,5 @@
 run:
-  skip-dirs:
-    - examples
+  timeout: 2m
 
 linters:
   disable-all: true
@@ -9,6 +8,7 @@ linters:
     - errcheck
     - exportloopref
     - funlen
+    - gci
     - goconst
     - gocritic
     - gocyclo
@@ -28,9 +28,13 @@ linters:
     - unparam
     - unused
 
+linters-settings:
+  gocritic:
+    disabled-checks:
+      - exitAfterDefer
+
 issues:
   exclude-rules:
-    # Exclude some linters from running on tests files.
     - path: _test\.go
       linters:
         - errcheck

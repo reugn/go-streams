@@ -7,23 +7,17 @@ import (
 	"strings"
 	"time"
 
-	rs "github.com/reugn/go-streams/redis"
-
 	"github.com/redis/go-redis/v9"
 	"github.com/reugn/go-streams/flow"
+	rs "github.com/reugn/go-streams/redis"
 )
 
 // XADD stream1 * key1 a key2 b key3 c
 // XLEN stream2
 // XREAD COUNT 1 BLOCK 100 STREAMS stream2 0
 func main() {
-	ctx, cancelFunc := context.WithCancel(context.Background())
-
-	timer := time.NewTimer(time.Minute * 30)
-	go func() {
-		<-timer.C
-		cancelFunc()
-	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	cancel()
 
 	config := &redis.Options{
 		Addr:     "localhost:6379", // use default Addr

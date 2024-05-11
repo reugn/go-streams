@@ -6,22 +6,16 @@ import (
 	"strings"
 	"time"
 
-	ext "github.com/reugn/go-streams/redis"
-
 	"github.com/redis/go-redis/v9"
 	"github.com/reugn/go-streams/flow"
+	ext "github.com/reugn/go-streams/redis"
 )
 
 // docker exec -it pubsub bash
 // https://redis.io/topics/pubsub
 func main() {
-	ctx, cancelFunc := context.WithCancel(context.Background())
-
-	timer := time.NewTimer(time.Minute)
-	go func() {
-		<-timer.C
-		cancelFunc()
-	}()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
 
 	config := &redis.Options{
 		Addr:     "localhost:6379", // use default Addr

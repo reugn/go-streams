@@ -9,10 +9,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/reugn/go-streams/flow"
 	ext "github.com/reugn/go-streams/ws"
-
-	"github.com/gorilla/websocket"
 )
 
 type wsServer struct {
@@ -23,7 +22,7 @@ type wsServer struct {
 
 func startWsServer() {
 	upgrader := websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool {
+		CheckOrigin: func(_ *http.Request) bool {
 			return true
 		},
 	}
@@ -41,9 +40,8 @@ func (server *wsServer) init() {
 	go server.handleMessages()
 
 	// send initial message
-	timer := time.NewTimer(time.Second)
 	go func() {
-		<-timer.C
+		<-time.After(time.Second)
 		payload := []byte("foo")
 		server.broadcast <- ext.Message{
 			MsgType: websocket.TextMessage,
@@ -54,7 +52,7 @@ func (server *wsServer) init() {
 	log.Print("http server started on :8080")
 	err := http.ListenAndServe(":8080", nil)
 	if err != nil {
-		log.Fatal("http.ListAndServe: ", err)
+		log.Fatalf("Error in http.ListAndServe: %s", err)
 	}
 }
 
@@ -67,22 +65,22 @@ func (server *wsServer) handleConnections(w http.ResponseWriter, r *http.Request
 	server.clients[conn] = true
 
 	for {
-		t, msg, err := conn.ReadMessage()
+		messageType, payload, err := conn.ReadMessage()
 		if err != nil {
-			log.Printf("Error on ReadMessage: %v", err)
+			log.Printf("Error in ReadMessage: %s", err)
 			delete(server.clients, conn)
 			break
 		}
 
-		m := ext.Message{
-			MsgType: t,
-			Payload: msg,
+		wsMessage := ext.Message{
+			MsgType: messageType,
+			Payload: payload,
 		}
 
-		log.Printf("Broadcasting message: %s", string(m.Payload))
+		log.Printf("Broadcasting message: %s", string(wsMessage.Payload))
 		time.Sleep(time.Second)
 
-		server.broadcast <- m
+		server.broadcast <- wsMessage
 	}
 }
 
@@ -93,7 +91,8 @@ func (server *wsServer) handleMessages() {
 			m := msg.(ext.Message)
 			err := client.WriteMessage(m.MsgType, m.Payload)
 			if err != nil {
-				log.Printf("Error on WriteMessage: %v", err)
+				log.Printf("Error in WriteMessage: %s", err)
+				// close the client and remove it from the list
 				client.Close()
 				delete(server.clients, client)
 			}
@@ -102,18 +101,12 @@ func (server *wsServer) handleMessages() {
 }
 
 func main() {
-	ctx, cancelFunc := context.WithCancel(context.Background())
-
-	timer := time.NewTimer(time.Second * 10)
-	go func() {
-		<-timer.C
-		log.Print("ctx")
-		cancelFunc()
-	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
 	go term()
 	startWsServer()
-	time.Sleep(time.Millisecond * 500)
+	time.Sleep(500 * time.Millisecond)
 
 	url := "ws://127.0.0.1:8080/ws"
 	source, err := ext.NewWebSocketSource(ctx, url)
@@ -130,8 +123,6 @@ func main() {
 	source.
 		Via(addAsteriskMapFlow).
 		To(sink)
-
-	log.Print("Exiting...")
 }
 
 var addAsterisk = func(msg ext.Message) string {
@@ -139,10 +130,8 @@ var addAsterisk = func(msg ext.Message) string {
 }
 
 func term() {
-	c := make(chan os.Signal)
-	signal.Notify(c, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-	select {
-	case <-c:
-		os.Exit(1)
-	}
+	sigchan := make(chan os.Signal, 1)
+	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
+	<-sigchan
+	os.Exit(1)
 }

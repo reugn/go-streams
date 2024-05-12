@@ -1,4 +1,4 @@
-module github.com/reugn/go-streams/ws
+module github.com/reugn/go-streams/websocket
 
 go 1.18
 

@@ -16,7 +16,7 @@ require (
 	github.com/reugn/go-streams/nats v0.0.0
 	github.com/reugn/go-streams/pulsar v0.0.0
 	github.com/reugn/go-streams/redis v0.0.0
-	github.com/reugn/go-streams/ws v0.0.0
+	github.com/reugn/go-streams/websocket v0.0.0
 )
 
 require (
@@ -94,5 +94,5 @@ replace (
 	github.com/reugn/go-streams/nats => ../nats
 	github.com/reugn/go-streams/pulsar => ../pulsar
 	github.com/reugn/go-streams/redis => ../redis
-	github.com/reugn/go-streams/ws => ../ws
+	github.com/reugn/go-streams/websocket => ../websocket
 )

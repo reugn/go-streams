@@ -4,14 +4,11 @@ import (
 	"context"
 	"log"
 	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/reugn/go-streams/flow"
-	ext "github.com/reugn/go-streams/ws"
+	ws "github.com/reugn/go-streams/websocket"
 )
 
 type wsServer struct {
@@ -43,7 +40,7 @@ func (server *wsServer) init() {
 	go func() {
 		<-time.After(time.Second)
 		payload := []byte("foo")
-		server.broadcast <- ext.Message{
+		server.broadcast <- ws.Message{
 			MsgType: websocket.TextMessage,
 			Payload: payload,
 		}
@@ -72,7 +69,7 @@ func (server *wsServer) handleConnections(w http.ResponseWriter, r *http.Request
 			break
 		}
 
-		wsMessage := ext.Message{
+		wsMessage := ws.Message{
 			MsgType: messageType,
 			Payload: payload,
 		}
@@ -88,7 +85,7 @@ func (server *wsServer) handleMessages() {
 	for {
 		msg := <-server.broadcast
 		for client := range server.clients {
-			m := msg.(ext.Message)
+			m := msg.(ws.Message)
 			err := client.WriteMessage(m.MsgType, m.Payload)
 			if err != nil {
 				log.Printf("Error in WriteMessage: %s", err)
@@ -104,34 +101,27 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	go term()
 	startWsServer()
 	time.Sleep(500 * time.Millisecond)
 
 	url := "ws://127.0.0.1:8080/ws"
-	source, err := ext.NewWebSocketSource(ctx, url)
+	source, err := ws.NewSource(ctx, url)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	addAsteriskMapFlow := flow.NewMap(addAsterisk, 1)
-	sink, err := ext.NewWebSocketSink(ctx, url)
+	mapFlow := flow.NewMap(addAsterisk, 1)
+
+	sink, err := ws.NewSink(url)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	source.
-		Via(addAsteriskMapFlow).
+		Via(mapFlow).
 		To(sink)
 }
 
-var addAsterisk = func(msg ext.Message) string {
+var addAsterisk = func(msg ws.Message) string {
 	return string(msg.Payload) + "*"
-}
-
-func term() {
-	sigchan := make(chan os.Signal, 1)
-	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
-	<-sigchan
-	os.Exit(1)
 }

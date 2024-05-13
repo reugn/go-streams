@@ -3,10 +3,6 @@ package nats
 import (
 	"context"
 	"log"
-	"os"
-	"os/signal"
-	"sync"
-	"syscall"
 
 	stan "github.com/nats-io/stan.go"
 	"github.com/reugn/go-streams"
@@ -14,97 +10,62 @@ import (
 )
 
 // StreamingSource represents a NATS Streaming source connector.
-// Deprecated: Use JetStreamSource instead.
+// Deprecated: Use [JetStreamSource] instead.
 type StreamingSource struct {
 	conn             stan.Conn
 	subscriptions    []stan.Subscription
 	subscriptionType stan.SubscriptionOption
-
-	topics    []string
-	out       chan any
-	ctx       context.Context
-	cancelCtx context.CancelFunc
-	wg        *sync.WaitGroup
+	topics           []string
+	out              chan any
 }
 
-// NewStreamingSource returns a new StreamingSource connector.
-func NewStreamingSource(ctx context.Context, conn stan.Conn, subscriptionType stan.SubscriptionOption,
-	topics ...string) *StreamingSource {
-	cctx, cancel := context.WithCancel(ctx)
+var _ streams.Source = (*StreamingSource)(nil)
 
+// NewStreamingSource returns a new StreamingSource connector.
+func NewStreamingSource(ctx context.Context, conn stan.Conn,
+	subscriptionType stan.SubscriptionOption,
+	topics ...string) *StreamingSource {
 	streamingSource := &StreamingSource{
 		conn:             conn,
 		subscriptions:    []stan.Subscription{},
 		subscriptionType: subscriptionType,
 		topics:           topics,
 		out:              make(chan any),
-		ctx:              cctx,
-		cancelCtx:        cancel,
-		wg:               &sync.WaitGroup{},
 	}
+	go streamingSource.init(ctx)
 
-	go streamingSource.init()
 	return streamingSource
 }
 
-// init starts the stream processing loop.
-func (ns *StreamingSource) init() {
-	sigchan := make(chan os.Signal, 1)
-	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
-
+func (ns *StreamingSource) init(ctx context.Context) {
 	// bind all topic subscribers
 	for _, topic := range ns.topics {
-		ns.wg.Add(1)
-		go func(t string) {
-			defer ns.wg.Done()
-			sub, err := ns.conn.Subscribe(t, func(msg *stan.Msg) {
-				ns.out <- msg
-			}, ns.subscriptionType)
-			if err != nil {
-				log.Fatal("Failed to subscribe to NATS cluster")
-			}
-
-			log.Printf("StreamingSource subscribed to topic %s", t)
-			ns.subscriptions = append(ns.subscriptions, sub)
-		}(topic)
+		sub, err := ns.conn.Subscribe(topic, func(msg *stan.Msg) {
+			ns.out <- msg
+		}, ns.subscriptionType)
+		if err != nil {
+			log.Printf("Failed to subscribe to topic %s: %s", topic, err)
+			continue
+		}
+		log.Printf("Subscribed to topic %s", topic)
+		ns.subscriptions = append(ns.subscriptions, sub)
 	}
 
-	// wait for an interrupt to unsubscribe topics
-	go ns.awaitCleanup()
+	<-ctx.Done()
 
-	select {
-	case <-sigchan:
-		log.Print("StreamingSource received termination signal, cleaning up...")
-		ns.cancelCtx()
-	case <-ns.ctx.Done():
-	}
-
-	ns.wg.Wait()
+	log.Printf("Closing NATS Streaming source connector")
 	close(ns.out)
+	ns.unsubscribe() // unbind all topic subscriptions
 	if err := ns.conn.Close(); err != nil {
-		log.Printf("Failed to close NATS Streaming connection: %s", err)
-	} else {
-		log.Print("NATS Streaming connection closed")
+		log.Printf("Error in Close: %s", err)
 	}
 }
 
-func (ns *StreamingSource) awaitCleanup() {
-	ns.wg.Add(1)
-	defer ns.wg.Done()
-
-	select {
-	case <-ns.ctx.Done():
-		for _, sub := range ns.subscriptions {
-			ns.wg.Add(1)
-			go func(sub stan.Subscription) {
-				defer ns.wg.Done()
-
-				if err := sub.Unsubscribe(); err != nil {
-					log.Fatal("Failed to remove NATS subscription")
-				}
-			}(sub)
+func (ns *StreamingSource) unsubscribe() {
+	for _, subscription := range ns.subscriptions {
+		if err := subscription.Unsubscribe(); err != nil {
+			log.Printf("Failed to remove NATS subscription: %s", err)
 		}
-	default:
 	}
 }
 
@@ -120,12 +81,14 @@ func (ns *StreamingSource) Out() <-chan any {
 }
 
 // StreamingSink represents a NATS Streaming sink connector.
-// Deprecated: Use JetStreamSink instead.
+// Deprecated: Use [JetStreamSink] instead.
 type StreamingSink struct {
 	conn  stan.Conn
 	topic string
 	in    chan any
 }
+
+var _ streams.Sink = (*StreamingSink)(nil)
 
 // NewStreamingSink returns a new StreamingSink connector.
 func NewStreamingSink(conn stan.Conn, topic string) *StreamingSink {
@@ -134,34 +97,30 @@ func NewStreamingSink(conn stan.Conn, topic string) *StreamingSink {
 		topic: topic,
 		in:    make(chan any),
 	}
-
 	go streamingSink.init()
+
 	return streamingSink
 }
 
-// init starts the stream processing loop.
 func (ns *StreamingSink) init() {
 	for msg := range ns.in {
 		var err error
 		switch message := msg.(type) {
 		case *stan.Msg:
 			err = ns.conn.Publish(ns.topic, message.Data)
-
 		case []byte:
 			err = ns.conn.Publish(ns.topic, message)
-
 		default:
 			log.Printf("Unsupported message type: %T", message)
 		}
+
 		if err != nil {
 			log.Printf("Error processing NATS Streaming message: %s", err)
 		}
 	}
-
+	log.Printf("Closing NATS Streaming sink connector")
 	if err := ns.conn.Close(); err != nil {
-		log.Printf("Failed to close NATS Streaming connection: %s", err)
-	} else {
-		log.Print("NATS Streaming connection closed")
+		log.Printf("Error in Close: %s", err)
 	}
 }
 

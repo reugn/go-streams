@@ -3,9 +3,6 @@ package pulsar
 import (
 	"context"
 	"log"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/reugn/go-streams"
@@ -17,10 +14,11 @@ type PulsarSource struct {
 	client   pulsar.Client
 	consumer pulsar.Consumer
 	out      chan any
-	ctx      context.Context
 }
 
-// NewPulsarSource returns a new PulsarSource instance.
+var _ streams.Source = (*PulsarSource)(nil)
+
+// NewPulsarSource returns a new PulsarSource connector.
 func NewPulsarSource(ctx context.Context, clientOptions *pulsar.ClientOptions,
 	consumerOptions *pulsar.ConsumerOptions) (*PulsarSource, error) {
 	client, err := pulsar.NewClient(*clientOptions)
@@ -37,50 +35,41 @@ func NewPulsarSource(ctx context.Context, clientOptions *pulsar.ClientOptions,
 		client:   client,
 		consumer: consumer,
 		out:      make(chan any),
-		ctx:      ctx,
 	}
+	go source.init(ctx)
 
-	go source.init()
 	return source, nil
 }
 
-// init starts the main loop
-func (ps *PulsarSource) init() {
-	sigchan := make(chan os.Signal, 1)
-	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
-
+func (ps *PulsarSource) init(ctx context.Context) {
 loop:
 	for {
 		select {
-		case <-sigchan:
+		case <-ctx.Done():
 			break loop
-
-		case <-ps.ctx.Done():
-			break loop
-
 		default:
-			msg, err := ps.consumer.Receive(ps.ctx)
-			if err == nil {
-				ps.out <- msg
-			} else {
-				log.Println(err)
+			// this call blocks until a message is available
+			msg, err := ps.consumer.Receive(ctx)
+			if err != nil {
+				log.Printf("Error is Receive: %s", err)
+				continue
 			}
+			ps.out <- msg
 		}
 	}
-
-	log.Printf("Closing Pulsar consumer")
+	log.Printf("Closing Pulsar source connector")
 	close(ps.out)
 	ps.consumer.Close()
 	ps.client.Close()
 }
 
-// Via streams data through the given flow
-func (ps *PulsarSource) Via(_flow streams.Flow) streams.Flow {
-	flow.DoStream(ps, _flow)
-	return _flow
+// Via streams data to a specified operator and returns it.
+func (ps *PulsarSource) Via(operator streams.Flow) streams.Flow {
+	flow.DoStream(ps, operator)
+	return operator
 }
 
-// Out returns an output channel for sending data
+// Out returns the output channel of the PulsarSource connector.
 func (ps *PulsarSource) Out() <-chan any {
 	return ps.out
 }
@@ -90,10 +79,11 @@ type PulsarSink struct {
 	client   pulsar.Client
 	producer pulsar.Producer
 	in       chan any
-	ctx      context.Context
 }
 
-// NewPulsarSink returns a new PulsarSink instance.
+var _ streams.Sink = (*PulsarSink)(nil)
+
+// NewPulsarSink returns a new PulsarSink connector.
 func NewPulsarSink(ctx context.Context, clientOptions *pulsar.ClientOptions,
 	producerOptions *pulsar.ProducerOptions) (*PulsarSink, error) {
 	client, err := pulsar.NewClient(*clientOptions)
@@ -110,43 +100,38 @@ func NewPulsarSink(ctx context.Context, clientOptions *pulsar.ClientOptions,
 		client:   client,
 		producer: producer,
 		in:       make(chan any),
-		ctx:      ctx,
 	}
+	go sink.init(ctx)
 
-	go sink.init()
 	return sink, nil
 }
 
-// init starts the main loop
-func (ps *PulsarSink) init() {
+func (ps *PulsarSink) init(ctx context.Context) {
 	for msg := range ps.in {
 		var err error
-		switch m := msg.(type) {
+		switch message := msg.(type) {
 		case pulsar.Message:
-			_, err = ps.producer.Send(ps.ctx, &pulsar.ProducerMessage{
-				Payload: m.Payload(),
+			_, err = ps.producer.Send(ctx, &pulsar.ProducerMessage{
+				Payload: message.Payload(),
 			})
-
 		case string:
-			_, err = ps.producer.Send(ps.ctx, &pulsar.ProducerMessage{
-				Payload: []byte(m),
+			_, err = ps.producer.Send(ctx, &pulsar.ProducerMessage{
+				Payload: []byte(message),
 			})
-
 		default:
-			log.Printf("Unsupported message type %v", m)
+			log.Printf("Unsupported message type: %T", message)
 		}
 
 		if err != nil {
 			log.Printf("Error processing Pulsar message: %s", err)
 		}
 	}
-
-	log.Printf("Closing Pulsar producer")
+	log.Printf("Closing Pulsar sink connector")
 	ps.producer.Close()
 	ps.client.Close()
 }
 
-// In returns an input channel for receiving data
+// In returns the input channel of the PulsarSink connector.
 func (ps *PulsarSink) In() chan<- any {
 	return ps.in
 }

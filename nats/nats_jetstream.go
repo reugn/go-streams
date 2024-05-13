@@ -53,7 +53,7 @@ func (config *JetStreamSourceConfig) validate() error {
 	return nil
 }
 
-// NewJetStreamSourceConfig returns a new JetStreamSourceConfig with default values.
+// NewJetStreamSourceConfig returns a new [JetStreamSourceConfig] with default values.
 func NewJetStreamSourceConfig(conn *nats.Conn, jetStreamContext nats.JetStreamContext,
 	subject string) *JetStreamSourceConfig {
 	return &JetStreamSourceConfig{
@@ -71,6 +71,8 @@ type JetStreamSource struct {
 	subscription *nats.Subscription
 	out          chan any
 }
+
+var _ streams.Source = (*JetStreamSource)(nil)
 
 // NewJetStreamSource returns a new JetStreamSource connector.
 // A pull-based subscription is used to consume data from the subject.
@@ -90,8 +92,8 @@ func NewJetStreamSource(ctx context.Context, config *JetStreamSourceConfig) (*Je
 		subscription: subscription,
 		out:          make(chan any),
 	}
-
 	go jetStreamSource.init(ctx)
+
 	return jetStreamSource, nil
 }
 
@@ -184,6 +186,8 @@ type JetStreamSink struct {
 	in     chan any
 }
 
+var _ streams.Sink = (*JetStreamSink)(nil)
+
 // NewJetStreamSink returns a new JetStreamSink connector.
 // The stream for the configured subject is expected to exist.
 func NewJetStreamSink(config *JetStreamSinkConfig) (*JetStreamSink, error) {
@@ -195,8 +199,8 @@ func NewJetStreamSink(config *JetStreamSinkConfig) (*JetStreamSink, error) {
 		config: config,
 		in:     make(chan any),
 	}
-
 	go jetStreamSink.init()
+
 	return jetStreamSink, nil
 }
 
@@ -210,16 +214,15 @@ func (js *JetStreamSink) init() {
 				js.config.Subject,
 				message.Data,
 				js.config.PubOpts...)
-
 		case []byte:
 			_, err = js.config.JetStreamCtx.Publish(
 				js.config.Subject,
 				message,
 				js.config.PubOpts...)
-
 		default:
 			log.Printf("Unsupported message type: %T", message)
 		}
+
 		if err != nil {
 			log.Printf("Error processing JetStream message: %s", err)
 		}

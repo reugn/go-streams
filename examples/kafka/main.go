@@ -12,13 +12,15 @@ import (
 )
 
 func main() {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
 	hosts := []string{"127.0.0.1:9092"}
-	ctx := context.Background()
 	config := sarama.NewConfig()
 	config.Consumer.Group.Rebalance.Strategy = sarama.NewBalanceStrategyRoundRobin()
 	config.Consumer.Offsets.Initial = sarama.OffsetNewest
 	config.Producer.Return.Successes = true
-	config.Version, _ = sarama.ParseKafkaVersion("2.8.1")
+	config.Version, _ = sarama.ParseKafkaVersion("3.6.2")
 	groupID := "testConsumer"
 
 	source, err := ext.NewKafkaSource(ctx, hosts, groupID, config, "test")

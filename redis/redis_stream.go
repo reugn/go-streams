@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"log"
+	"strings"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/reugn/go-streams"
@@ -16,12 +17,13 @@ import (
 // append-only log. These include random access in O(1) time and complex
 // consumption strategies, such as consumer groups.
 type StreamSource struct {
-	ctx             context.Context
 	redisClient     *redis.Client
 	readGroupArgs   *redis.XReadGroupArgs
 	groupCreateArgs *XGroupCreateArgs
 	out             chan any
 }
+
+var _ streams.Source = (*StreamSource)(nil)
 
 // XGroupCreateArgs represents the arguments for creating a consumer group.
 //
@@ -38,9 +40,11 @@ type XGroupCreateArgs struct {
 // NewStreamSource returns a new StreamSource instance.
 // Pass in nil for the groupCreateArgs parameter if the consumer group already exists.
 func NewStreamSource(ctx context.Context, redisClient *redis.Client,
-	readGroupArgs *redis.XReadGroupArgs, groupCreateArgs *XGroupCreateArgs) (*StreamSource, error) {
+	readGroupArgs *redis.XReadGroupArgs, groupCreateArgs *XGroupCreateArgs,
+) (*StreamSource, error) {
 	if groupCreateArgs != nil {
-		// Create a new consumer group uniquely identified by <group> for the stream stored at <stream>.
+		// Create a new consumer group uniquely identified by <group> for the stream
+		// stored at <stream>.
 		// By default, the XGROUP CREATE command expects that the target stream exists,
 		// and returns an error when it doesn't.
 		var err error
@@ -63,115 +67,116 @@ func NewStreamSource(ctx context.Context, redisClient *redis.Client,
 	}
 
 	source := &StreamSource{
-		ctx:             ctx,
 		redisClient:     redisClient,
 		readGroupArgs:   readGroupArgs,
 		groupCreateArgs: groupCreateArgs,
 		out:             make(chan any),
 	}
+	go source.init(ctx)
 
-	go source.init()
 	return source, nil
 }
 
-// init starts the main loop
-func (rs *StreamSource) init() {
+func (rs *StreamSource) init(ctx context.Context) {
 loop:
 	for {
 		select {
-		case <-rs.ctx.Done():
+		case <-ctx.Done():
 			break loop
-
 		default:
 			// The XREADGROUP command is a special version of the XREAD command with
 			// support for consumer groups.
-			entries, err := rs.redisClient.XReadGroup(rs.ctx, rs.readGroupArgs).Result()
+			entries, err := rs.redisClient.XReadGroup(ctx, rs.readGroupArgs).Result()
 			if err != nil {
-				log.Printf("Error in redisClient.XReadGroup: %s", err)
+				log.Printf("Error in XReadGroup: %s", err)
+				if strings.HasPrefix(err.Error(), "NOGROUP") {
+					break loop
+				}
 			}
-
-			for _, e := range entries {
-				for _, msg := range e.Messages {
+			// route incoming messages downstream
+			for _, stream := range entries {
+				for _, msg := range stream.Messages {
 					rs.out <- &msg
 				}
 			}
 		}
 	}
-
-	log.Printf("Closing Redis stream consumer")
+	log.Printf("Closing Redis StreamSource connector")
 	close(rs.out)
-	rs.redisClient.Close()
+	if err := rs.redisClient.Close(); err != nil {
+		log.Printf("Error in Close: %s", err)
+	}
 }
 
-// Via streams data through the given flow
-func (rs *StreamSource) Via(_flow streams.Flow) streams.Flow {
-	flow.DoStream(rs, _flow)
-	return _flow
+// Via streams data to a specified operator and returns it.
+func (rs *StreamSource) Via(operator streams.Flow) streams.Flow {
+	flow.DoStream(rs, operator)
+	return operator
 }
 
-// Out returns an output channel for sending data
+// Out returns the output channel of the StreamSource connector.
 func (rs *StreamSource) Out() <-chan any {
 	return rs.out
 }
 
 // StreamSink represents a Redis stream sink connector.
 type StreamSink struct {
-	ctx         context.Context
 	redisClient *redis.Client
 	stream      string
 	in          chan any
 }
 
+var _ streams.Sink = (*StreamSink)(nil)
+
 // NewStreamSink returns a new StreamSink instance.
 //
 // The incoming messages will be streamed to the given target stream using the
 // provided redis.Client.
-func NewStreamSink(ctx context.Context, redisClient *redis.Client, stream string) *StreamSink {
+func NewStreamSink(ctx context.Context, redisClient *redis.Client,
+	stream string) *StreamSink {
 	sink := &StreamSink{
-		ctx:         ctx,
 		redisClient: redisClient,
 		stream:      stream,
 		in:          make(chan any),
 	}
+	go sink.init(ctx)
 
-	go sink.init()
 	return sink
 }
 
-// init starts the main loop
-func (rs *StreamSink) init() {
+func (rs *StreamSink) init(ctx context.Context) {
 	for msg := range rs.in {
-		switch m := msg.(type) {
+		switch message := msg.(type) {
 		case *redis.XMessage:
-			rs.xAdd(&redis.XAddArgs{
+			rs.xAdd(ctx, &redis.XAddArgs{
 				Stream: rs.stream, // use the target stream name
-				Values: m.Values,
+				Values: message.Values,
 			})
 		case map[string]any:
-			rs.xAdd(&redis.XAddArgs{
+			rs.xAdd(ctx, &redis.XAddArgs{
 				Stream: rs.stream,
-				Values: m,
+				Values: message,
 			})
 		default:
-			log.Printf("Unsupported message type %v", m)
+			log.Printf("Unsupported message type: %T", message)
 		}
 	}
-
-	log.Printf("Closing Redis stream producer")
-	rs.redisClient.Close()
-}
-
-// xAdd appends the message to the target stream
-func (rs *StreamSink) xAdd(args *redis.XAddArgs) {
-	// Streams are an append-only data structure. The fundamental write
-	// command, called XADD, appends a new entry to the specified stream.
-	err := rs.redisClient.XAdd(rs.ctx, args).Err()
-	if err != nil {
-		log.Printf("Error in redisClient.XAdd: %s", err)
+	log.Printf("Closing Redis StreamSink connector")
+	if err := rs.redisClient.Close(); err != nil {
+		log.Printf("Error in Close: %s", err)
 	}
 }
 
-// In returns an input channel for receiving data
+// xAdd appends the message to the target stream.
+func (rs *StreamSink) xAdd(ctx context.Context, args *redis.XAddArgs) {
+	// Streams are an append-only data structure. The fundamental write
+	// command, called XADD, appends a new entry to the specified stream.
+	if err := rs.redisClient.XAdd(ctx, args).Err(); err != nil {
+		log.Printf("Error in XAdd: %s", err)
+	}
+}
+
+// In returns the input channel of the StreamSink connector.
 func (rs *StreamSink) In() chan<- any {
 	return rs.in
 }

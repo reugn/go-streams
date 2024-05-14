@@ -1,24 +1,36 @@
-version: '3'
+# docker exec --interactive --tty pulsar-standalone /pulsar/bin/pulsar-client produce test1 -m "test" -n 10
+# docker exec --interactive --tty pulsar-standalone /pulsar/bin/pulsar-client consume -s sub test2 -n 0
 
 services:
   standalone:
-    image: apachepulsar/pulsar
+    image: apachepulsar/pulsar:3.2.2
+    container_name: pulsar-standalone
     ports:
       - "6650:6650"
     expose:
       - 8080
       - 6650 
     environment:
-      - PULSAR_MEM=" -Xms512m -Xmx512m -XX:MaxDirectMemorySize=1g"
+      - BOOKIE_MEM=" -Xms512m -Xmx512m -XX:MaxDirectMemorySize=1g"
     command: >
       /bin/bash -c
       "bin/apply-config-from-env.py conf/standalone.conf
       && bin/pulsar standalone"
+    networks:
+      - pulsar-network
+
   dashboard:
-    image: apachepulsar/pulsar-dashboard
+    image: apachepulsar/pulsar-dashboard:2.8.1
+    container_name: pulsar-dashboard
     depends_on:
       - standalone
     ports:
       - "80:80"
     environment:
       - SERVICE_URL=http://standalone:8080
+    networks:
+      - pulsar-network
+
+networks: 
+  pulsar-network:
+    driver: bridge

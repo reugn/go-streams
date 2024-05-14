@@ -11,7 +11,6 @@ import (
 	ext "github.com/reugn/go-streams/redis"
 )
 
-// docker exec -it pubsub bash
 // https://redis.io/topics/pubsub
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -39,5 +38,6 @@ func main() {
 }
 
 var toUpper = func(msg *redis.Message) string {
+	log.Printf("Got: %s", msg)
 	return strings.ToUpper(msg.Payload)
 }

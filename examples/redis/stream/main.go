@@ -17,7 +17,7 @@ import (
 // XREAD COUNT 1 BLOCK 100 STREAMS stream2 0
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	cancel()
+	defer cancel()
 
 	config := &redis.Options{
 		Addr:     "localhost:6379", // use default Addr
@@ -52,7 +52,7 @@ func main() {
 }
 
 var toUpper = func(msg *redis.XMessage) *redis.XMessage {
-	fmt.Printf("Got: %v\n", msg.Values)
+	log.Printf("Got: %v", msg.Values)
 	values := make(map[string]any, len(msg.Values))
 	for key, element := range msg.Values {
 		values[key] = strings.ToUpper(fmt.Sprintf("%v", element))

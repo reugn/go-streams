@@ -175,7 +175,7 @@ func (ns *NetSink) init() {
 				writer.Flush()
 			}
 		default:
-			log.Printf("NetSink unsupported message type %v", m)
+			log.Printf("NetSink unsupported message type: %T", m)
 		}
 	}
 

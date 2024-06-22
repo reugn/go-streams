@@ -256,7 +256,7 @@ loop:
 					log.Printf("Error parsing bin map: %s", err)
 				}
 			default:
-				log.Printf("Unsupported message type %v", message)
+				log.Printf("Unsupported message type: %T", message)
 			}
 		case <-flushTickerChan:
 			as.flushBuffer()

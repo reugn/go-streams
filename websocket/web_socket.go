@@ -132,7 +132,7 @@ func (wsock *Sink) init() {
 		case []byte:
 			err = wsock.connection.WriteMessage(ws.BinaryMessage, m)
 		default:
-			log.Printf("Unsupported message type %v", m)
+			log.Printf("Unsupported message type: %T", m)
 		}
 
 		if err != nil {

@@ -65,5 +65,11 @@ func (pq *PriorityQueue) Update(item *Item, newEpoch int64) {
 
 // Slice returns a sliced PriorityQueue using the given bounds.
 func (pq PriorityQueue) Slice(start, end int) PriorityQueue {
-	return pq[start:end]
+	// Create a new slice with the desired length
+	subQueue := make(PriorityQueue, end-start)
+
+	// Copy the elements from the original slice to the new slice
+	copy(subQueue, pq[start:end])
+
+	return subQueue
 }

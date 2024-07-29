@@ -70,16 +70,21 @@ func TestSlidingWindowWithExtractor(t *testing.T) {
 
 	now := time.Now()
 	inputValues := []element{
+		{"c", now.Add(29 * time.Millisecond).UnixNano()},
 		{"a", now.Add(2 * time.Millisecond).UnixNano()},
 		{"b", now.Add(17 * time.Millisecond).UnixNano()},
-		{"c", now.Add(29 * time.Millisecond).UnixNano()},
 		{"d", now.Add(35 * time.Millisecond).UnixNano()},
-		{"e", now.Add(77 * time.Millisecond).UnixNano()},
 		{"f", now.Add(93 * time.Millisecond).UnixNano()},
+		{"e", now.Add(77 * time.Millisecond).UnixNano()},
 		{"g", now.Add(120 * time.Millisecond).UnixNano()},
 	}
 	go ingestSlice(inputValues, in)
 	go closeDeferred(in, 250*time.Millisecond)
+	// send some out-of-order events
+	go ingestDeferred(element{"h", now.Add(5 * time.Millisecond).UnixNano()},
+		in, 145*time.Millisecond)
+	go ingestDeferred(element{"i", now.Add(3 * time.Millisecond).UnixNano()},
+		in, 145*time.Millisecond)
 
 	go func() {
 		source.
@@ -93,14 +98,14 @@ func TestSlidingWindowWithExtractor(t *testing.T) {
 	}
 	fmt.Println(outputValues)
 
-	assert.Equal(t, 6, len(outputValues)) // [[a b c d e f g] [c d e f g] [e f g] [e f g] [f g] [g]]
+	assert.Equal(t, 6, len(outputValues)) // [[a b c d] [c d] [e] [e f] [f g] [i h g]]
 
-	assert.Equal(t, []string{"a", "b", "c", "d", "e", "f", "g"}, outputValues[0])
-	assert.Equal(t, []string{"c", "d", "e", "f", "g"}, outputValues[1])
-	assert.Equal(t, []string{"e", "f", "g"}, outputValues[2])
-	assert.Equal(t, []string{"e", "f", "g"}, outputValues[3])
+	assert.Equal(t, []string{"a", "b", "c", "d"}, outputValues[0])
+	assert.Equal(t, []string{"c", "d"}, outputValues[1])
+	assert.Equal(t, []string{"e"}, outputValues[2])
+	assert.Equal(t, []string{"e", "f"}, outputValues[3])
 	assert.Equal(t, []string{"f", "g"}, outputValues[4])
-	assert.Equal(t, []string{"g"}, outputValues[5])
+	assert.Equal(t, []string{"i", "h", "g"}, outputValues[5])
 }
 
 func stringValues(elements []element) []string {

@@ -1,12 +1,18 @@
 package flow
 
 import (
-	"container/heap"
+	"sort"
 	"sync"
 	"time"
 
 	"github.com/reugn/go-streams"
 )
+
+// timedElement stores an incoming element along with its timestamp.
+type timedElement[T any] struct {
+	element   T
+	timestamp int64
+}
 
 // SlidingWindow assigns elements to windows of fixed length configured by the window
 // size parameter.
@@ -18,7 +24,7 @@ type SlidingWindow[T any] struct {
 	sync.Mutex
 	windowSize         time.Duration
 	slidingInterval    time.Duration
-	queue              *PriorityQueue
+	queue              []timedElement[T]
 	in                 chan any
 	out                chan any
 	done               chan struct{}
@@ -65,7 +71,7 @@ func NewSlidingWindowWithExtractor[T any](
 	slidingWindow := &SlidingWindow[T]{
 		windowSize:         windowSize,
 		slidingInterval:    slidingInterval,
-		queue:              &PriorityQueue{},
+		queue:              make([]timedElement[T], 0),
 		in:                 make(chan any),
 		out:                make(chan any),
 		done:               make(chan struct{}),
@@ -108,7 +114,7 @@ func (sw *SlidingWindow[T]) transmit(inlet streams.Inlet) {
 }
 
 // timestamp extracts the timestamp from an element if the timestampExtractor is set.
-// It returns system clock time otherwise.
+// Otherwise, the system time is returned.
 func (sw *SlidingWindow[T]) timestamp(element T) int64 {
 	if sw.timestampExtractor == nil {
 		return time.Now().UnixNano()
@@ -116,13 +122,16 @@ func (sw *SlidingWindow[T]) timestamp(element T) int64 {
 	return sw.timestampExtractor(element)
 }
 
-// receive buffers the incoming elements by pushing them into a priority queue,
-// ordered by their creation time.
+// receive buffers the incoming elements by pushing them into the queue,
+// wrapping the original item into a timedElement along with its timestamp.
 func (sw *SlidingWindow[T]) receive() {
 	for element := range sw.in {
-		item := &Item{element, sw.timestamp(element.(T)), 0}
 		sw.Lock()
-		heap.Push(sw.queue, item)
+		timed := timedElement[T]{
+			element:   element.(T),
+			timestamp: sw.timestamp(element.(T)),
+		}
+		sw.queue = append(sw.queue, timed)
 		sw.Unlock()
 	}
 	close(sw.done)
@@ -150,47 +159,51 @@ func (sw *SlidingWindow[T]) emit() {
 	}
 }
 
-// dispatchWindow creates a new window and slides the elements queue.
-// It sends the slice of elements to the output channel if the window is not empty.
+// dispatchWindow is responsible for sending the elements in the current
+// window to the output channel and moving the window to the next position.
 func (sw *SlidingWindow[T]) dispatchWindow(tick time.Time) {
 	sw.Lock()
-	// build a window of elements
-	var windowBottomIndex int
-	now := tick.UnixNano()
-	windowUpperIndex := sw.queue.Len()
-	slideUpperIndex := windowUpperIndex
-	slideUpperTime := now - sw.windowSize.Nanoseconds() + sw.slidingInterval.Nanoseconds()
-	windowBottomTime := now - sw.windowSize.Nanoseconds()
-	for i, item := range *sw.queue {
-		if item.epoch < windowBottomTime {
-			windowBottomIndex = i
-		}
-		if item.epoch > slideUpperTime {
-			slideUpperIndex = i
+
+	// sort elements in the queue by their timestamp
+	sort.Slice(sw.queue, func(i, j int) bool {
+		return sw.queue[i].timestamp < sw.queue[j].timestamp
+	})
+
+	// calculate the next window start time
+	nextWindowStartTime := tick.Add(-sw.windowSize).Add(sw.slidingInterval).UnixNano()
+	// initialize the next window queue
+	var nextWindowQueue []timedElement[T]
+	for i, element := range sw.queue {
+		if element.timestamp > nextWindowStartTime {
+			nextWindowQueue = make([]timedElement[T], len(sw.queue)-i)
+			_ = copy(nextWindowQueue, sw.queue[i:])
 			break
 		}
 	}
-	windowElements := extractWindowElements[T](sw.queue.Slice(windowBottomIndex, windowUpperIndex))
-	if windowUpperIndex > 0 { // the queue is not empty
-		// slice the queue using the lower and upper bounds
-		sliced := sw.queue.Slice(slideUpperIndex, windowUpperIndex)
-		// reset the queue
-		sw.queue = &sliced
-		heap.Init(sw.queue)
-	}
+
+	// extract current window elements
+	windowElements := extractWindowElements(sw.queue, tick.UnixNano())
+	// move the window
+	sw.queue = nextWindowQueue
+
 	sw.Unlock()
 
-	// send elements if the window is not empty
+	// send elements downstream if the current window is not empty
 	if len(windowElements) > 0 {
 		sw.out <- windowElements
 	}
 }
 
-// extractWindowElements generates a window of elements from a given slice of queue items.
-func extractWindowElements[T any](items []*Item) []T {
-	elements := make([]T, len(items))
-	for i, item := range items {
-		elements[i] = item.Msg.(T)
+// extractWindowElements extracts current window elements from the given slice
+// of timedElement. Elements newer than now will not be included.
+func extractWindowElements[T any](timed []timedElement[T], now int64) []T {
+	elements := make([]T, 0, len(timed))
+	for _, timedElement := range timed {
+		if timedElement.timestamp < now {
+			elements = append(elements, timedElement.element)
+		} else {
+			break // we can break since the input is an ordered slice
+		}
 	}
 	return elements
 }

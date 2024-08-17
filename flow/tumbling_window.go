@@ -11,7 +11,7 @@ import (
 // Tumbling windows have a fixed size and do not overlap.
 // T indicates the incoming element type, and the outgoing element type is []T.
 type TumblingWindow[T any] struct {
-	sync.Mutex
+	mu         sync.Mutex
 	windowSize time.Duration
 	in         chan any
 	out        chan any
@@ -71,9 +71,9 @@ func (tw *TumblingWindow[T]) transmit(inlet streams.Inlet) {
 // receive buffers the incoming elements.
 func (tw *TumblingWindow[T]) receive() {
 	for element := range tw.in {
-		tw.Lock()
+		tw.mu.Lock()
 		tw.buffer = append(tw.buffer, element.(T))
-		tw.Unlock()
+		tw.mu.Unlock()
 	}
 	close(tw.done)
 }
@@ -99,10 +99,10 @@ func (tw *TumblingWindow[T]) emit() {
 // dispatchWindow creates a window from buffered elements and resets the buffer.
 // It sends the slice of elements to the output channel if the window is not empty.
 func (tw *TumblingWindow[T]) dispatchWindow() {
-	tw.Lock()
+	tw.mu.Lock()
 	windowElements := tw.buffer
 	tw.buffer = nil
-	tw.Unlock()
+	tw.mu.Unlock()
 
 	// send elements if the window is not empty
 	if len(windowElements) > 0 {

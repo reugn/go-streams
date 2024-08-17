@@ -11,7 +11,7 @@ import (
 // Session windows do not overlap and do not have a fixed start and end time.
 // T indicates the incoming element type, and the outgoing element type is []T.
 type SessionWindow[T any] struct {
-	sync.Mutex
+	mu            sync.Mutex
 	inactivityGap time.Duration
 	in            chan any
 	out           chan any
@@ -74,9 +74,9 @@ func (sw *SessionWindow[T]) transmit(inlet streams.Inlet) {
 // It resets the inactivity timer on each new element.
 func (sw *SessionWindow[T]) receive() {
 	for element := range sw.in {
-		sw.Lock()
+		sw.mu.Lock()
 		sw.buffer = append(sw.buffer, element.(T))
-		sw.Unlock()
+		sw.mu.Unlock()
 		sw.notifyTimerReset() // signal to reset the inactivity timer
 	}
 	close(sw.done)
@@ -121,10 +121,10 @@ func (sw *SessionWindow[T]) emit() {
 // dispatchWindow creates a window from buffered elements and resets the buffer.
 // It sends the slice of elements to the output channel if the window is not empty.
 func (sw *SessionWindow[T]) dispatchWindow() {
-	sw.Lock()
+	sw.mu.Lock()
 	windowElements := sw.buffer
 	sw.buffer = nil
-	sw.Unlock()
+	sw.mu.Unlock()
 
 	// send elements if the window is not empty
 	if len(windowElements) > 0 {

@@ -21,7 +21,7 @@ type timedElement[T any] struct {
 // In this case elements are assigned to multiple windows.
 // T indicates the incoming element type, and the outgoing element type is []T.
 type SlidingWindow[T any] struct {
-	sync.Mutex
+	mu                 sync.Mutex
 	windowSize         time.Duration
 	slidingInterval    time.Duration
 	queue              []timedElement[T]
@@ -126,13 +126,13 @@ func (sw *SlidingWindow[T]) timestamp(element T) int64 {
 // wrapping the original item into a timedElement along with its timestamp.
 func (sw *SlidingWindow[T]) receive() {
 	for element := range sw.in {
-		sw.Lock()
+		sw.mu.Lock()
 		timed := timedElement[T]{
 			element:   element.(T),
 			timestamp: sw.timestamp(element.(T)),
 		}
 		sw.queue = append(sw.queue, timed)
-		sw.Unlock()
+		sw.mu.Unlock()
 	}
 	close(sw.done)
 }
@@ -162,7 +162,7 @@ func (sw *SlidingWindow[T]) emit() {
 // dispatchWindow is responsible for sending the elements in the current
 // window to the output channel and moving the window to the next position.
 func (sw *SlidingWindow[T]) dispatchWindow(tick time.Time) {
-	sw.Lock()
+	sw.mu.Lock()
 
 	// sort elements in the queue by their timestamp
 	sort.Slice(sw.queue, func(i, j int) bool {
@@ -186,7 +186,7 @@ func (sw *SlidingWindow[T]) dispatchWindow(tick time.Time) {
 	// move the window
 	sw.queue = nextWindowQueue
 
-	sw.Unlock()
+	sw.mu.Unlock()
 
 	// send elements downstream if the current window is not empty
 	if len(windowElements) > 0 {

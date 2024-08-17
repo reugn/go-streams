@@ -31,6 +31,7 @@ func Split[T any](outlet streams.Outlet, predicate func(T) bool) [2]streams.Flow
 				condFalse.In() <- element
 			}
 		}
+
 		close(condTrue.In())
 		close(condFalse.In())
 	}()
@@ -48,12 +49,12 @@ func FanOut(outlet streams.Outlet, magnitude int) []streams.Flow {
 
 	go func() {
 		for element := range outlet.Out() {
-			for _, socket := range out {
-				socket.In() <- element
+			for _, flow := range out {
+				flow.In() <- element
 			}
 		}
-		for i := 0; i < magnitude; i++ {
-			close(out[i].In())
+		for _, flow := range out {
+			close(flow.In())
 		}
 	}()
 
@@ -78,6 +79,7 @@ func RoundRobin(outlet streams.Outlet, magnitude int) []streams.Flow {
 }
 
 // Merge merges multiple flows into a single flow.
+// When all specified outlets are closed, the resulting flow will close.
 func Merge(outlets ...streams.Flow) streams.Flow {
 	merged := NewPassThrough()
 	var wg sync.WaitGroup
@@ -93,10 +95,10 @@ func Merge(outlets ...streams.Flow) streams.Flow {
 	}
 
 	// close the in channel on the last outlet close.
-	go func(wg *sync.WaitGroup) {
+	go func() {
 		wg.Wait()
 		close(merged.In())
-	}(&wg)
+	}()
 
 	return merged
 }

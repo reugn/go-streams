@@ -36,6 +36,7 @@ func NewReduce[T any](reduceFunction ReduceFunction[T]) *Reduce[T] {
 		out:            make(chan any),
 	}
 	go reduce.doStream()
+
 	return reduce
 }
 
@@ -72,7 +73,9 @@ func (r *Reduce[T]) doStream() {
 		if r.lastReduced == nil {
 			r.lastReduced = element
 		} else {
-			r.lastReduced = r.reduceFunction(r.lastReduced.(T), element.(T))
+			r.lastReduced = r.reduceFunction(
+				r.lastReduced.(T),
+				element.(T))
 		}
 		r.out <- r.lastReduced
 	}

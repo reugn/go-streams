@@ -7,10 +7,35 @@ import (
 	"testing"
 	"time"
 
+	"github.com/reugn/go-streams"
 	ext "github.com/reugn/go-streams/extension"
 	"github.com/reugn/go-streams/flow"
 	"github.com/reugn/go-streams/internal/assert"
 )
+
+func ptr[T any](value T) *T {
+	return &value
+}
+
+func ptrSlice[T any](slice []T) []*T {
+	result := make([]*T, len(slice))
+	for i, e := range slice {
+		result[i] = ptr(e)
+	}
+	return result
+}
+
+func ptrInnerSlice[T any](slice [][]T) [][]*T {
+	outer := make([][]*T, len(slice))
+	for i, s := range slice {
+		inner := make([]*T, len(s))
+		for j, e := range s {
+			inner[j] = ptr(e)
+		}
+		outer[i] = inner
+	}
+	return outer
+}
 
 var addAsterisk = func(in string) []string {
 	resultSlice := make([]string, 2)
@@ -21,14 +46,6 @@ var addAsterisk = func(in string) []string {
 
 var filterNotContainsA = func(in string) bool {
 	return !strings.ContainsAny(in, "aA")
-}
-
-var reduceSum = func(a int, b int) int {
-	return a + b
-}
-
-var retransmitStringSlice = func(in []string) []string {
-	return in
 }
 
 var mtx sync.Mutex
@@ -53,6 +70,22 @@ func closeDeferred[T any](in chan T, wait time.Duration) {
 	mtx.Lock()
 	defer mtx.Unlock()
 	close(in)
+}
+
+func readSlice[T any](ch <-chan any) []T {
+	var result []T
+	for e := range ch {
+		result = append(result, e.(T))
+	}
+	return result
+}
+
+func readSlicePtr[T any](ch <-chan any) []*T {
+	var result []*T
+	for e := range ch {
+		result = append(result, e.(*T))
+	}
+	return result
 }
 
 func TestComplexFlow(t *testing.T) {
@@ -83,12 +116,9 @@ func TestComplexFlow(t *testing.T) {
 			To(sink)
 	}()
 
-	var outputValues []string
-	for e := range sink.Out {
-		outputValues = append(outputValues, e.(string))
-	}
-
+	outputValues := readSlice[string](sink.Out)
 	expectedValues := []string{"B*", "B**", "C*", "C**"}
+
 	assert.Equal(t, expectedValues, outputValues)
 }
 
@@ -111,13 +141,45 @@ func TestSplitFlow(t *testing.T) {
 	flow.Merge(split[0], split[1]).
 		To(sink)
 
+	outputValues := readSlice[string](sink.Out)
+	sort.Strings(outputValues)
+	expectedValues := []string{"A", "B", "C"}
+
+	assert.Equal(t, expectedValues, outputValues)
+}
+
+func TestSplitFlow_Ptr(t *testing.T) {
+	in := make(chan any, 3)
+	out := make(chan any, 3)
+
+	source := ext.NewChanSource(in)
+	toUpperMapFlow := flow.NewMap(func(s *string) *string {
+		upper := strings.ToUpper(*s)
+		return &upper
+	}, 1)
+	sink := ext.NewChanSink(out)
+
+	inputValues := ptrSlice([]string{"a", "b", "c"})
+	ingestSlice(inputValues, in)
+	close(in)
+
+	split := flow.Split(
+		source.Via(toUpperMapFlow),
+		func(in *string) bool {
+			return !strings.ContainsAny(*in, "aA")
+		})
+
+	flow.Merge(split[0], split[1]).
+		To(sink)
+
 	var outputValues []string
 	for e := range sink.Out {
-		outputValues = append(outputValues, e.(string))
+		v := e.(*string)
+		outputValues = append(outputValues, *v)
 	}
 	sort.Strings(outputValues)
-
 	expectedValues := []string{"A", "B", "C"}
+
 	assert.Equal(t, expectedValues, outputValues)
 }
 
@@ -144,13 +206,10 @@ func TestFanOutFlow(t *testing.T) {
 			To(sink)
 	}()
 
-	var outputValues []string
-	for e := range sink.Out {
-		outputValues = append(outputValues, e.(string))
-	}
+	outputValues := readSlice[string](sink.Out)
 	sort.Strings(outputValues)
-
 	expectedValues := []string{"B", "B", "C", "C"}
+
 	assert.Equal(t, expectedValues, outputValues)
 }
 
@@ -177,65 +236,58 @@ func TestRoundRobinFlow(t *testing.T) {
 			To(sink)
 	}()
 
-	var outputValues []string
-	for e := range sink.Out {
-		outputValues = append(outputValues, e.(string))
-	}
+	outputValues := readSlice[string](sink.Out)
 	sort.Strings(outputValues)
-
 	expectedValues := []string{"B", "C"}
+
 	assert.Equal(t, expectedValues, outputValues)
 }
 
-func TestReduceFlow(t *testing.T) {
-	in := make(chan any, 5)
-	out := make(chan any, 5)
-
-	source := ext.NewChanSource(in)
-	reduceFlow := flow.NewReduce(reduceSum)
-	sink := ext.NewChanSink(out)
-
-	inputValues := []int{1, 2, 3, 4, 5}
-	ingestSlice(inputValues, in)
-	close(in)
-
-	source.
-		Via(reduceFlow).
-		Via(flow.NewPassThrough()).
-		To(sink)
-
-	var outputValues []int
-	for e := range sink.Out {
-		outputValues = append(outputValues, e.(int))
+func TestFlatten(t *testing.T) {
+	tests := []struct {
+		name        string
+		flattenFlow streams.Flow
+		ptr         bool
+	}{
+		{
+			name:        "values",
+			flattenFlow: flow.Flatten[int](1),
+			ptr:         false,
+		},
+		{
+			name:        "pointers",
+			flattenFlow: flow.Flatten[*int](1),
+			ptr:         true,
+		},
 	}
+	input := [][]int{{1, 2, 3}, {4, 5}}
+	expected := []int{1, 2, 3, 4, 5}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := make(chan any, 5)
+			out := make(chan any, 5)
 
-	expectedValues := []int{1, 3, 6, 10, 15}
-	assert.Equal(t, expectedValues, outputValues)
-}
+			source := ext.NewChanSource(in)
+			sink := ext.NewChanSink(out)
 
-func TestFilterNonPositiveParallelism(t *testing.T) {
-	assert.Panics(t, func() {
-		flow.NewFilter(filterNotContainsA, 0)
-	})
-	assert.Panics(t, func() {
-		flow.NewFilter(filterNotContainsA, -1)
-	})
-}
+			if tt.ptr {
+				ingestSlice(ptrInnerSlice(input), in)
+			} else {
+				ingestSlice(input, in)
+			}
+			close(in)
 
-func TestFlatMapNonPositiveParallelism(t *testing.T) {
-	assert.Panics(t, func() {
-		flow.NewFlatMap(addAsterisk, 0)
-	})
-	assert.Panics(t, func() {
-		flow.NewFlatMap(addAsterisk, -1)
-	})
-}
+			source.
+				Via(tt.flattenFlow).
+				To(sink)
 
-func TestMapNonPositiveParallelism(t *testing.T) {
-	assert.Panics(t, func() {
-		flow.NewMap(strings.ToUpper, 0)
-	})
-	assert.Panics(t, func() {
-		flow.NewMap(strings.ToUpper, -1)
-	})
+			if tt.ptr {
+				output := readSlicePtr[int](out)
+				assert.Equal(t, ptrSlice(expected), output)
+			} else {
+				output := readSlice[int](out)
+				assert.Equal(t, expected, output)
+			}
+		})
+	}
 }

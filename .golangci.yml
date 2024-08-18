@@ -40,3 +40,4 @@ issues:
         - errcheck
         - unparam
         - prealloc
+        - funlen

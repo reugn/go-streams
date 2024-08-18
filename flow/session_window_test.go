@@ -28,14 +28,10 @@ func TestSessionWindow(t *testing.T) {
 	go func() {
 		source.
 			Via(sessionWindow).
-			Via(flow.NewMap(retransmitStringSlice, 1)). // test generic return type
 			To(sink)
 	}()
 
-	var outputValues [][]string
-	for e := range sink.Out {
-		outputValues = append(outputValues, e.([]string))
-	}
+	outputValues := readSlice[[]string](sink.Out)
 	fmt.Println(outputValues)
 
 	assert.Equal(t, 3, len(outputValues)) // [[a b c] [d] [e]]
@@ -45,7 +41,7 @@ func TestSessionWindow(t *testing.T) {
 	assert.Equal(t, []string{"e"}, outputValues[2])
 }
 
-func TestLongSessionWindow(t *testing.T) {
+func TestSessionWindow_Long(t *testing.T) {
 	in := make(chan any)
 	out := make(chan any)
 
@@ -68,14 +64,43 @@ func TestLongSessionWindow(t *testing.T) {
 			To(sink)
 	}()
 
-	var outputValues [][]string
-	for e := range sink.Out {
-		outputValues = append(outputValues, e.([]string))
-	}
+	outputValues := readSlice[[]string](sink.Out)
 	fmt.Println(outputValues)
 
 	assert.Equal(t, 2, len(outputValues)) // [[a b c d e f g] [h]]
 
 	assert.Equal(t, []string{"a", "b", "c", "d", "e", "f", "g"}, outputValues[0])
 	assert.Equal(t, []string{"h"}, outputValues[1])
+}
+
+func TestSessionWindow_Ptr(t *testing.T) {
+	in := make(chan any)
+	out := make(chan any)
+
+	source := ext.NewChanSource(in)
+	sessionWindow := flow.NewSessionWindow[*string](20 * time.Millisecond)
+	sink := ext.NewChanSink(out)
+	assert.NotEqual(t, sessionWindow.Out(), nil)
+
+	inputValues := ptrSlice([]string{"a", "b", "c"})
+	go ingestSlice(inputValues, in)
+	go ingestDeferred(ptr("d"), in, 30*time.Millisecond)
+	go ingestDeferred(ptr("e"), in, 70*time.Millisecond)
+	go closeDeferred(in, 100*time.Millisecond)
+
+	go func() {
+		source.
+			Via(sessionWindow).
+			Via(flow.NewPassThrough()). // Via coverage
+			To(sink)
+	}()
+
+	outputValues := readSlice[[]*string](sink.Out)
+	fmt.Println(outputValues)
+
+	assert.Equal(t, 3, len(outputValues)) // [[a b c] [d] [e]]
+
+	assert.Equal(t, ptrSlice([]string{"a", "b", "c"}), outputValues[0])
+	assert.Equal(t, ptrSlice([]string{"d"}), outputValues[1])
+	assert.Equal(t, ptrSlice([]string{"e"}), outputValues[2])
 }

@@ -43,6 +43,7 @@ func NewMap[T, R any](mapFunction MapFunction[T, R], parallelism int) *Map[T, R]
 		parallelism: parallelism,
 	}
 	go mapFlow.doStream()
+
 	return mapFlow
 }
 

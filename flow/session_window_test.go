@@ -91,6 +91,7 @@ func TestSessionWindow_Ptr(t *testing.T) {
 	go func() {
 		source.
 			Via(sessionWindow).
+			Via(flow.NewPassThrough()). // Via coverage
 			To(sink)
 	}()
 

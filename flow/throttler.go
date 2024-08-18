@@ -59,7 +59,7 @@ func NewThrottler(elements int, period time.Duration, bufferSize int, mode Throt
 		done:        make(chan struct{}),
 	}
 	go throttler.resetQuotaCounterLoop()
-	go throttler.bufferize()
+	go throttler.buffer()
 
 	return throttler
 }
@@ -95,9 +95,9 @@ func (th *Throttler) notifyQuotaReset() {
 	}
 }
 
-// bufferize starts buffering incoming elements.
-// If an unsupported ThrottleMode was specified, bufferize will panic.
-func (th *Throttler) bufferize() {
+// buffer starts buffering incoming elements.
+// If an unsupported ThrottleMode was specified, buffer will panic.
+func (th *Throttler) buffer() {
 	switch th.mode {
 	case Discard:
 		for element := range th.in {

@@ -65,6 +65,7 @@ func TestBatch_Ptr(t *testing.T) {
 	go func() {
 		source.
 			Via(batch).
+			Via(flow.NewPassThrough()). // Via coverage
 			To(sink)
 	}()
 

@@ -1,7 +1,6 @@
 package flow_test
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -10,7 +9,7 @@ import (
 	"github.com/reugn/go-streams/internal/assert"
 )
 
-func TestThrottlerWithBackpressure(t *testing.T) {
+func TestThrottler_WithBackpressure(t *testing.T) {
 	in := make(chan any)
 	out := make(chan any)
 
@@ -30,27 +29,22 @@ func TestThrottlerWithBackpressure(t *testing.T) {
 
 	outputValues := readValues(interval/2, out)
 	assert.Equal(t, []any{"a", "b"}, outputValues)
-	fmt.Println(outputValues)
 
 	outputValues = readValues(interval, out)
-	fmt.Println(outputValues)
 	assert.Equal(t, []any{"c", "d"}, outputValues)
 
 	outputValues = readValues(interval, out)
-	fmt.Println(outputValues)
 	assert.Equal(t, []any{"e", "f"}, outputValues)
 
 	outputValues = readValues(interval, out)
-	fmt.Println(outputValues)
 	assert.Equal(t, []any{"g"}, outputValues)
 
 	outputValues = readValues(interval, out)
-	fmt.Println(outputValues)
 	var empty []any
 	assert.Equal(t, empty, outputValues)
 }
 
-func TestThrottlerWithDiscard(t *testing.T) {
+func TestThrottler_WithDiscard(t *testing.T) {
 	in := make(chan any, 7)
 	out := make(chan any, 7)
 
@@ -69,18 +63,15 @@ func TestThrottlerWithDiscard(t *testing.T) {
 
 	outputValues := readValues(interval/2, out)
 	assert.Equal(t, []any{"a", "b"}, outputValues)
-	fmt.Println(outputValues)
+
+	_ = readValues(interval, out)
 
 	outputValues = readValues(interval, out)
-	fmt.Println(outputValues)
-
-	outputValues = readValues(interval, out)
-	fmt.Println(outputValues)
 	var empty []any
 	assert.Equal(t, empty, outputValues)
 }
 
-func TestThrottlerNonPositiveElements(t *testing.T) {
+func TestThrottler_NonPositiveElements(t *testing.T) {
 	assert.Panics(t, func() {
 		flow.NewThrottler(0, time.Second, 1, flow.Discard)
 	})
@@ -89,7 +80,7 @@ func TestThrottlerNonPositiveElements(t *testing.T) {
 	})
 }
 
-func TestThrottlerNonPositiveBufferSize(t *testing.T) {
+func TestThrottler_NonPositiveBufferSize(t *testing.T) {
 	assert.Panics(t, func() {
 		flow.NewThrottler(1, time.Second, 0, flow.Backpressure)
 	})
@@ -102,7 +93,6 @@ func writeValues(in chan any) {
 	inputValues := []string{"a", "b", "c", "d", "e", "f", "g"}
 	ingestSlice(inputValues, in)
 	close(in)
-	fmt.Println("Closed input channel")
 }
 
 func readValues(timeout time.Duration, out <-chan any) []any {
@@ -114,7 +104,6 @@ func readValues(timeout time.Duration, out <-chan any) []any {
 			if e != nil {
 				outputValues = append(outputValues, e)
 			} else {
-				fmt.Println("Got nil in output")
 				timer.Stop()
 				return outputValues
 			}

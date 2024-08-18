@@ -146,6 +146,7 @@ func TestSlidingWindow_WithExtractorPtr(t *testing.T) {
 	go func() {
 		source.
 			Via(slidingWindow).
+			Via(flow.NewPassThrough()). // Via coverage
 			To(sink)
 	}()
 

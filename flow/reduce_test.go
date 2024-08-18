@@ -43,19 +43,23 @@ func TestReduce(t *testing.T) {
 
 			if tt.ptr {
 				ingestSlice(ptrSlice(input), in)
-			} else {
-				ingestSlice(input, in)
-			}
-			close(in)
+				close(in)
 
-			source.
-				Via(tt.reduceFlow).
-				To(sink)
+				source.
+					Via(tt.reduceFlow).
+					To(sink)
 
-			if tt.ptr {
 				output := readSlicePtr[int](out)
 				assert.Equal(t, ptrSlice(expected), output)
 			} else {
+				ingestSlice(input, in)
+				close(in)
+
+				source.
+					Via(tt.reduceFlow).
+					Via(flow.NewPassThrough()). // Via coverage
+					To(sink)
+
 				output := readSlice[int](out)
 				assert.Equal(t, expected, output)
 			}

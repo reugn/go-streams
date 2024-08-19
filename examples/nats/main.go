@@ -84,7 +84,7 @@ func jetStream() {
 			nats.Context(ctx), // sets deadline for fetch
 		},
 	}
-	jetSource, err := ext.NewJetStreamSource(ctx, sourceConfig)
+	jetSource, err := ext.NewJetStreamSource(ctx, sourceConfig, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func jetStream() {
 		Subject:      subjectName,
 		PubOpts:      []nats.PubOpt{nats.Context(ctx)},
 	}
-	jetSink, err := ext.NewJetStreamSink(sinkConfig)
+	jetSink, err := ext.NewJetStreamSink(sinkConfig, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -122,19 +122,22 @@ func streaming() {
 
 	fileSource := extension.NewFileSource("in.txt")
 	toUpperMapFlow := flow.NewMap(toUpperString, 1)
-	prodConn, err := stan.Connect("test-cluster", "test-producer", stan.NatsURL("nats://localhost:4223"))
+	prodConn, err := stan.Connect("test-cluster", "test-producer",
+		stan.NatsURL("nats://localhost:4223"))
 	if err != nil {
 		log.Fatal(err)
 	}
-	streamingSink := ext.NewStreamingSink(prodConn, "topic1")
+	streamingSink := ext.NewStreamingSink(prodConn, "topic1", nil)
 
-	subConn, err := stan.Connect("test-cluster", "test-subscriber", stan.NatsURL("nats://localhost:4223"))
+	subConn, err := stan.Connect("test-cluster", "test-subscriber",
+		stan.NatsURL("nats://localhost:4223"))
 	if err != nil {
 		log.Fatal(err)
 	}
 	// This example uses the StartWithLastReceived subscription option
 	// there are more available at https://docs.nats.io/developing-with-nats-streaming/receiving
-	streamingSource := ext.NewStreamingSource(ctx, subConn, stan.StartWithLastReceived(), "topic1")
+	streamingSource := ext.NewStreamingSource(ctx, subConn, stan.StartWithLastReceived(),
+		[]string{"topic1"}, nil)
 	fetchStanMsgMapFlow := flow.NewMap(fetchStanMsg, 1)
 	stdOutSInk := extension.NewStdoutSink()
 

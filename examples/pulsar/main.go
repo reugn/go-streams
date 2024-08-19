@@ -20,13 +20,13 @@ func main() {
 	}
 
 	ctx := context.Background()
-	source, err := ext.NewPulsarSource(ctx, &clientOptions, &consumerOptions)
+	source, err := ext.NewSource(ctx, &clientOptions, &consumerOptions, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	toUpperMapFlow := flow.NewMap(toUpper, 1)
-	sink, err := ext.NewPulsarSink(ctx, &clientOptions, &producerOptions)
+	sink, err := ext.NewSink(ctx, &clientOptions, &producerOptions, nil)
 	if err != nil {
 		log.Fatal(err)
 	}

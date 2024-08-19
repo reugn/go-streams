@@ -4,10 +4,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
-	"log"
+	"fmt"
+	"log/slog"
 	"time"
 
-	aero "github.com/aerospike/aerospike-client-go/v6"
+	aero "github.com/aerospike/aerospike-client-go/v7"
 	"github.com/reugn/go-streams"
 	"github.com/reugn/go-streams/flow"
 )
@@ -27,7 +28,7 @@ type PollingConfig struct {
 	Namespace string
 	// SetName determines query set name (optional).
 	SetName string
-	// BinNames detemines which bins to retrieve (optional).
+	// BinNames determines which bins to retrieve (optional).
 	BinNames []string
 
 	filterExpression *aero.Expression
@@ -41,13 +42,14 @@ type PollingSource struct {
 	statement   *aero.Statement
 	recordsChan chan *aero.Result
 	out         chan any
+	logger      *slog.Logger
 }
 
 var _ streams.Source = (*PollingSource)(nil)
 
-// NewPollingSource returns a new PollingSource instance.
+// NewPollingSource returns a new [PollingSource] connector.
 func NewPollingSource(ctx context.Context, client *aero.Client,
-	config PollingConfig) *PollingSource {
+	config PollingConfig, logger *slog.Logger) *PollingSource {
 	if config.QueryPolicy == nil {
 		config.QueryPolicy = aero.NewQueryPolicy()
 	} else {
@@ -59,12 +61,21 @@ func NewPollingSource(ctx context.Context, client *aero.Client,
 		Filter:    config.SecondaryIndexFilter,
 		BinNames:  config.BinNames,
 	}
+
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger = logger.With(slog.Group("connector",
+		slog.String("name", "aerospike"),
+		slog.String("type", "source")))
+
 	source := &PollingSource{
 		client:      client,
 		config:      config,
 		statement:   statement,
 		recordsChan: make(chan *aero.Result),
 		out:         make(chan any),
+		logger:      logger,
 	}
 
 	go source.pollChanges(ctx)
@@ -104,7 +115,7 @@ loop:
 					ps.config.filterExpression,
 				)
 			}
-			log.Printf("Polling records from: %s", lastUpdate)
+			ps.logger.Debug("Polling records", slog.Any("from", lastUpdate))
 			// execute the query command
 			ps.query()
 		}
@@ -114,7 +125,7 @@ loop:
 func (ps *PollingSource) query() {
 	recordSet, err := ps.client.Query(ps.config.QueryPolicy, ps.statement)
 	if err != nil {
-		log.Printf("Aerospike polling query failed: %s", err)
+		ps.logger.Error("Polling query failed", slog.Any("error", err))
 		return
 	}
 	for result := range recordSet.Results() {
@@ -135,11 +146,12 @@ loop:
 			if result.Err == nil {
 				ps.out <- result.Record // send the record downstream
 			} else {
-				log.Printf("Aerospike query record error: %s", result.Err)
+				ps.logger.Error("Read record error",
+					slog.Any("error", result.Err))
 			}
 		}
 	}
-	log.Printf("Closing Aerospike polling connector")
+	ps.logger.Info("Closing connector")
 	close(ps.out)
 }
 
@@ -201,21 +213,32 @@ type Sink struct {
 	config SinkConfig
 	buf    []*Record
 	in     chan any
+	logger *slog.Logger
 }
 
 var _ streams.Sink = (*Sink)(nil)
 
-// NewSink returns a new Sink instance.
-func NewSink(client *aero.Client, config SinkConfig) *Sink {
+// NewSink returns a new [Sink] connector.
+func NewSink(client *aero.Client, config SinkConfig, logger *slog.Logger) *Sink {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger = logger.With(slog.Group("connector",
+		slog.String("name", "aerospike"),
+		slog.String("type", "sink")))
+
 	sink := &Sink{
 		client: client,
 		config: config,
 		in:     make(chan any),
+		logger: logger,
 	}
+
 	// initialize the buffer for batch writes
 	if config.BatchSize > 1 {
 		sink.buf = make([]*Record, 0, config.BatchSize)
 	}
+
 	// begin processing upstream records
 	go sink.processStream()
 
@@ -253,10 +276,12 @@ loop:
 					}
 				}
 				if err != nil {
-					log.Printf("Error parsing bin map: %s", err)
+					as.logger.Error("Error parsing bin map",
+						slog.Any("error", err))
 				}
 			default:
-				log.Printf("Unsupported message type: %T", message)
+				as.logger.Error("Unsupported message type",
+					slog.String("type", fmt.Sprintf("%T", message)))
 			}
 		case <-flushTickerChan:
 			as.flushBuffer()
@@ -275,7 +300,7 @@ func (as *Sink) writeRecord(record *Record) {
 	} else {
 		// use single record put operation
 		if err := as.client.Put(as.config.WritePolicy, record.Key, record.Bins); err != nil {
-			log.Printf("Failed to write record: %s", err)
+			as.logger.Error("Failed to write record", slog.Any("error", err))
 		}
 	}
 }
@@ -287,9 +312,11 @@ func (as *Sink) flushBuffer() {
 		for _, rec := range as.buf {
 			records = append(records, rec.batchWrite(as.config.BatchWritePolicy))
 		}
-		log.Printf("Writing batch of %d records", len(records))
+		as.logger.Debug("Writing batch of records",
+			slog.Int("size", len(records)))
 		if err := as.client.BatchOperate(as.config.BatchPolicy, records); err != nil {
-			log.Printf("Failed to write batch of records: %s", err)
+			as.logger.Error("Failed to write batch of records",
+				slog.Any("error", err))
 		}
 		as.buf = as.buf[:0] // clear the buffer
 	}

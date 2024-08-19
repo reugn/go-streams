@@ -2,7 +2,8 @@ package nats
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"log/slog"
 
 	stan "github.com/nats-io/stan.go"
 	"github.com/reugn/go-streams"
@@ -17,20 +18,29 @@ type StreamingSource struct {
 	subscriptionType stan.SubscriptionOption
 	topics           []string
 	out              chan any
+	logger           *slog.Logger
 }
 
 var _ streams.Source = (*StreamingSource)(nil)
 
-// NewStreamingSource returns a new StreamingSource connector.
+// NewStreamingSource returns a new [StreamingSource] connector.
 func NewStreamingSource(ctx context.Context, conn stan.Conn,
 	subscriptionType stan.SubscriptionOption,
-	topics ...string) *StreamingSource {
+	topics []string, logger *slog.Logger) *StreamingSource {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger = logger.With(slog.Group("connector",
+		slog.String("name", "nats.streaming"),
+		slog.String("type", "source")))
+
 	streamingSource := &StreamingSource{
 		conn:             conn,
 		subscriptions:    []stan.Subscription{},
 		subscriptionType: subscriptionType,
 		topics:           topics,
 		out:              make(chan any),
+		logger:           logger,
 	}
 	go streamingSource.init(ctx)
 
@@ -44,27 +54,31 @@ func (ns *StreamingSource) init(ctx context.Context) {
 			ns.out <- msg
 		}, ns.subscriptionType)
 		if err != nil {
-			log.Printf("Failed to subscribe to topic %s: %s", topic, err)
+			ns.logger.Error("Failed to subscribe to topic",
+				slog.String("topic", topic),
+				slog.Any("error", err))
 			continue
 		}
-		log.Printf("Subscribed to topic %s", topic)
+		ns.logger.Info("Subscribed to topic",
+			slog.String("topic", topic))
 		ns.subscriptions = append(ns.subscriptions, sub)
 	}
 
 	<-ctx.Done()
 
-	log.Printf("Closing NATS Streaming source connector")
+	ns.logger.Info("Closing connector")
 	close(ns.out)
 	ns.unsubscribe() // unbind all topic subscriptions
 	if err := ns.conn.Close(); err != nil {
-		log.Printf("Error in Close: %s", err)
+		ns.logger.Warn("Error in conn.Close", slog.Any("error", err))
 	}
 }
 
 func (ns *StreamingSource) unsubscribe() {
 	for _, subscription := range ns.subscriptions {
 		if err := subscription.Unsubscribe(); err != nil {
-			log.Printf("Failed to remove NATS subscription: %s", err)
+			ns.logger.Warn("Failed to remove subscription",
+				slog.Any("error", err))
 		}
 	}
 }
@@ -83,19 +97,29 @@ func (ns *StreamingSource) Out() <-chan any {
 // StreamingSink represents a NATS Streaming sink connector.
 // Deprecated: Use [JetStreamSink] instead.
 type StreamingSink struct {
-	conn  stan.Conn
-	topic string
-	in    chan any
+	conn   stan.Conn
+	topic  string
+	in     chan any
+	logger *slog.Logger
 }
 
 var _ streams.Sink = (*StreamingSink)(nil)
 
-// NewStreamingSink returns a new StreamingSink connector.
-func NewStreamingSink(conn stan.Conn, topic string) *StreamingSink {
+// NewStreamingSink returns a new [StreamingSink] connector.
+func NewStreamingSink(conn stan.Conn, topic string,
+	logger *slog.Logger) *StreamingSink {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger = logger.With(slog.Group("connector",
+		slog.String("name", "nats.streaming"),
+		slog.String("type", "sink")))
+
 	streamingSink := &StreamingSink{
-		conn:  conn,
-		topic: topic,
-		in:    make(chan any),
+		conn:   conn,
+		topic:  topic,
+		in:     make(chan any),
+		logger: logger,
 	}
 	go streamingSink.init()
 
@@ -111,16 +135,18 @@ func (ns *StreamingSink) init() {
 		case []byte:
 			err = ns.conn.Publish(ns.topic, message)
 		default:
-			log.Printf("Unsupported message type: %T", message)
+			ns.logger.Error("Unsupported message type",
+				slog.String("type", fmt.Sprintf("%T", message)))
 		}
 
 		if err != nil {
-			log.Printf("Error processing NATS Streaming message: %s", err)
+			ns.logger.Error("Error processing message",
+				slog.Any("error", err))
 		}
 	}
-	log.Printf("Closing NATS Streaming sink connector")
+	ns.logger.Info("Closing connector")
 	if err := ns.conn.Close(); err != nil {
-		log.Printf("Error in Close: %s", err)
+		ns.logger.Warn("Error in conn.Close", slog.Any("error", err))
 	}
 }
 

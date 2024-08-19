@@ -3,7 +3,8 @@ package nats
 import (
 	"context"
 	"errors"
-	"log"
+	"fmt"
+	"log/slog"
 
 	"github.com/nats-io/nats.go"
 	"github.com/reugn/go-streams"
@@ -70,13 +71,15 @@ type JetStreamSource struct {
 	config       *JetStreamSourceConfig
 	subscription *nats.Subscription
 	out          chan any
+	logger       *slog.Logger
 }
 
 var _ streams.Source = (*JetStreamSource)(nil)
 
-// NewJetStreamSource returns a new JetStreamSource connector.
+// NewJetStreamSource returns a new [JetStreamSource] connector.
 // A pull-based subscription is used to consume data from the subject.
-func NewJetStreamSource(ctx context.Context, config *JetStreamSourceConfig) (*JetStreamSource, error) {
+func NewJetStreamSource(ctx context.Context, config *JetStreamSourceConfig,
+	logger *slog.Logger) (*JetStreamSource, error) {
 	// create a pull based consumer
 	subscription, err := config.JetStreamCtx.PullSubscribe(config.Subject,
 		config.ConsumerName, config.SubOpts...)
@@ -87,10 +90,18 @@ func NewJetStreamSource(ctx context.Context, config *JetStreamSourceConfig) (*Je
 		return nil, err
 	}
 
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger = logger.With(slog.Group("connector",
+		slog.String("name", "nats.jetstream"),
+		slog.String("type", "source")))
+
 	jetStreamSource := &JetStreamSource{
 		config:       config,
 		subscription: subscription,
 		out:          make(chan any),
+		logger:       logger,
 	}
 	go jetStreamSource.init(ctx)
 
@@ -109,11 +120,11 @@ loop:
 		// pull a batch of messages from the stream
 		messages, err := js.subscription.Fetch(js.config.FetchBatchSize, js.config.PullOpts...)
 		if err != nil {
-			log.Printf("JetStream source connector fetch error: %s", err)
+			js.logger.Error("Error in subscription.Fetch", slog.Any("error", err))
 			break loop
 		}
 		if len(messages) == 0 {
-			log.Print("Message batch is empty")
+			js.logger.Debug("Message batch is empty")
 			continue
 		}
 		for _, msg := range messages {
@@ -122,22 +133,25 @@ loop:
 			if js.config.Ack {
 				// acknowledge the message
 				if err := msg.Ack(js.config.AckOpts...); err != nil {
-					log.Printf("Failed to acknowledge JetStream message: %s", err)
+					js.logger.Error("Failed to acknowledge message",
+						slog.Any("error", err))
 				}
 			} else {
 				// reset the redelivery timer on the server
 				if err := msg.InProgress(js.config.AckOpts...); err != nil {
-					log.Printf("Failed to set JetStream message in progress: %s", err)
+					js.logger.Error("Failed to set message in progress",
+						slog.Any("error", err))
 				}
 			}
 		}
 	}
 
 	if err := js.subscription.Drain(); err != nil {
-		log.Printf("Failed to drain JetStream subscription: %s", err)
+		js.logger.Error("Failed to drain subscription",
+			slog.Any("error", err))
 	}
+	js.logger.Info("Closing connector")
 	close(js.out)
-	log.Print("JetStream consumer closed")
 }
 
 // Via streams data to a specified operator and returns it.
@@ -184,20 +198,30 @@ func (config *JetStreamSinkConfig) validate() error {
 type JetStreamSink struct {
 	config *JetStreamSinkConfig
 	in     chan any
+	logger *slog.Logger
 }
 
 var _ streams.Sink = (*JetStreamSink)(nil)
 
-// NewJetStreamSink returns a new JetStreamSink connector.
+// NewJetStreamSink returns a new [JetStreamSink] connector.
 // The stream for the configured subject is expected to exist.
-func NewJetStreamSink(config *JetStreamSinkConfig) (*JetStreamSink, error) {
+func NewJetStreamSink(config *JetStreamSinkConfig,
+	logger *slog.Logger) (*JetStreamSink, error) {
 	if err := config.validate(); err != nil {
 		return nil, err
 	}
 
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger = logger.With(slog.Group("connector",
+		slog.String("name", "nats.jetstream"),
+		slog.String("type", "sink")))
+
 	jetStreamSink := &JetStreamSink{
 		config: config,
 		in:     make(chan any),
+		logger: logger,
 	}
 	go jetStreamSink.init()
 
@@ -220,21 +244,24 @@ func (js *JetStreamSink) init() {
 				message,
 				js.config.PubOpts...)
 		default:
-			log.Printf("Unsupported message type: %T", message)
+			js.logger.Error("Unsupported message type",
+				slog.String("type", fmt.Sprintf("%T", message)))
 		}
 
 		if err != nil {
-			log.Printf("Error processing JetStream message: %s", err)
+			js.logger.Error("Error processing message",
+				slog.Any("error", err))
 		}
 	}
 
 	if js.config.DrainConn {
 		// puts all subscriptions into a drain state
 		if err := js.config.Conn.Drain(); err != nil {
-			log.Printf("Failed to drain JetStream connection: %s", err)
+			js.logger.Error("Failed to drain connection",
+				slog.Any("error", err))
 		}
 	}
-	log.Print("JetStream producer closed")
+	js.logger.Info("Closing connector")
 }
 
 // In returns the input channel of the JetStreamSink connector.

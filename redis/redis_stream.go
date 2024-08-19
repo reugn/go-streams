@@ -2,7 +2,8 @@ package redis
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/redis/go-redis/v9"
@@ -21,6 +22,7 @@ type StreamSource struct {
 	readGroupArgs   *redis.XReadGroupArgs
 	groupCreateArgs *XGroupCreateArgs
 	out             chan any
+	logger          *slog.Logger
 }
 
 var _ streams.Source = (*StreamSource)(nil)
@@ -37,10 +39,11 @@ type XGroupCreateArgs struct {
 	MkStream bool // set to true to create an empty stream automatically
 }
 
-// NewStreamSource returns a new StreamSource instance.
+// NewStreamSource returns a new [StreamSource] connector.
 // Pass in nil for the groupCreateArgs parameter if the consumer group already exists.
 func NewStreamSource(ctx context.Context, redisClient *redis.Client,
 	readGroupArgs *redis.XReadGroupArgs, groupCreateArgs *XGroupCreateArgs,
+	logger *slog.Logger,
 ) (*StreamSource, error) {
 	if groupCreateArgs != nil {
 		// Create a new consumer group uniquely identified by <group> for the stream
@@ -66,11 +69,19 @@ func NewStreamSource(ctx context.Context, redisClient *redis.Client,
 		}
 	}
 
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger = logger.With(slog.Group("connector",
+		slog.String("name", "redis.stream"),
+		slog.String("type", "source")))
+
 	source := &StreamSource{
 		redisClient:     redisClient,
 		readGroupArgs:   readGroupArgs,
 		groupCreateArgs: groupCreateArgs,
 		out:             make(chan any),
+		logger:          logger,
 	}
 	go source.init(ctx)
 
@@ -88,7 +99,8 @@ loop:
 			// support for consumer groups.
 			entries, err := rs.redisClient.XReadGroup(ctx, rs.readGroupArgs).Result()
 			if err != nil {
-				log.Printf("Error in XReadGroup: %s", err)
+				rs.logger.Error("Error in client.XReadGroup",
+					slog.Any("error", err))
 				if strings.HasPrefix(err.Error(), "NOGROUP") {
 					break loop
 				}
@@ -101,10 +113,10 @@ loop:
 			}
 		}
 	}
-	log.Printf("Closing Redis StreamSource connector")
+	rs.logger.Info("Closing connector")
 	close(rs.out)
 	if err := rs.redisClient.Close(); err != nil {
-		log.Printf("Error in Close: %s", err)
+		rs.logger.Warn("Error in client.Close", slog.Any("error", err))
 	}
 }
 
@@ -124,20 +136,29 @@ type StreamSink struct {
 	redisClient *redis.Client
 	stream      string
 	in          chan any
+	logger      *slog.Logger
 }
 
 var _ streams.Sink = (*StreamSink)(nil)
 
-// NewStreamSink returns a new StreamSink instance.
+// NewStreamSink returns a new [StreamSink] connector.
 //
 // The incoming messages will be streamed to the given target stream using the
 // provided redis.Client.
 func NewStreamSink(ctx context.Context, redisClient *redis.Client,
-	stream string) *StreamSink {
+	stream string, logger *slog.Logger) *StreamSink {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger = logger.With(slog.Group("connector",
+		slog.String("name", "redis.stream"),
+		slog.String("type", "sink")))
+
 	sink := &StreamSink{
 		redisClient: redisClient,
 		stream:      stream,
 		in:          make(chan any),
+		logger:      logger,
 	}
 	go sink.init(ctx)
 
@@ -158,12 +179,13 @@ func (rs *StreamSink) init(ctx context.Context) {
 				Values: message,
 			})
 		default:
-			log.Printf("Unsupported message type: %T", message)
+			rs.logger.Error("Unsupported message type",
+				slog.String("type", fmt.Sprintf("%T", message)))
 		}
 	}
-	log.Printf("Closing Redis StreamSink connector")
+	rs.logger.Info("Closing connector")
 	if err := rs.redisClient.Close(); err != nil {
-		log.Printf("Error in Close: %s", err)
+		rs.logger.Warn("Error in client.Close", slog.Any("error", err))
 	}
 }
 
@@ -172,7 +194,7 @@ func (rs *StreamSink) xAdd(ctx context.Context, args *redis.XAddArgs) {
 	// Streams are an append-only data structure. The fundamental write
 	// command, called XADD, appends a new entry to the specified stream.
 	if err := rs.redisClient.XAdd(ctx, args).Err(); err != nil {
-		log.Printf("Error in XAdd: %s", err)
+		rs.logger.Error("Error in client.XAdd", slog.Any("error", err))
 	}
 }
 

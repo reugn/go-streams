@@ -58,7 +58,9 @@ func (server *wsServer) handleConnections(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
 	server.clients[conn] = true
 
 	for {
@@ -90,7 +92,7 @@ func (server *wsServer) handleMessages() {
 			if err != nil {
 				log.Printf("Error in WriteMessage: %s", err)
 				// close the client and remove it from the list
-				client.Close()
+				_ = client.Close()
 				delete(server.clients, client)
 			}
 		}
@@ -105,14 +107,14 @@ func main() {
 	time.Sleep(500 * time.Millisecond)
 
 	url := "ws://127.0.0.1:8080/ws"
-	source, err := ws.NewSource(ctx, url)
+	source, err := ws.NewSource(ctx, url, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	mapFlow := flow.NewMap(addAsterisk, 1)
 
-	sink, err := ws.NewSink(url)
+	sink, err := ws.NewSink(url, nil)
 	if err != nil {
 		log.Fatal(err)
 	}

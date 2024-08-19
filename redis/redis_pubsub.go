@@ -2,7 +2,8 @@ package redis
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"log/slog"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/reugn/go-streams"
@@ -19,33 +20,42 @@ type PubSubSource struct {
 	redisClient *redis.Client
 	channel     string
 	out         chan any
+	logger      *slog.Logger
 }
 
 var _ streams.Source = (*PubSubSource)(nil)
 
-// NewPubSubSource returns a new PubSubSource instance.
+// NewPubSubSource returns a new [PubSubSource] connector.
 //
 // The given redisClient is subscribed to the provided channel.
 // The replies to subscription and unsubscribing operations are sent in the form
 // of messages so that the client reads a coherent stream of messages where the
 // first element indicates the type of message.
 func NewPubSubSource(ctx context.Context, redisClient *redis.Client,
-	channel string) (*PubSubSource, error) {
-	pubsub := redisClient.Subscribe(ctx, channel)
+	channel string, logger *slog.Logger) (*PubSubSource, error) {
+	pubSub := redisClient.Subscribe(ctx, channel)
 
 	// wait for a confirmation that subscription is created before
 	// publishing anything
-	_, err := pubsub.Receive(ctx)
+	_, err := pubSub.Receive(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger = logger.With(slog.Group("connector",
+		slog.String("name", "redis.pubsub"),
+		slog.String("type", "source")))
 
 	source := &PubSubSource{
 		redisClient: redisClient,
 		channel:     channel,
 		out:         make(chan any),
+		logger:      logger,
 	}
-	go source.init(ctx, pubsub.Channel())
+	go source.init(ctx, pubSub.Channel())
 
 	return source, nil
 }
@@ -61,10 +71,10 @@ loop:
 			ps.out <- msg
 		}
 	}
-	log.Printf("Closing Redis PubSubSource connector")
+	ps.logger.Info("Closing connector")
 	close(ps.out)
 	if err := ps.redisClient.Close(); err != nil {
-		log.Printf("Error in Close: %s", err)
+		ps.logger.Warn("Error in client.Close", slog.Any("error", err))
 	}
 }
 
@@ -84,20 +94,29 @@ type PubSubSink struct {
 	redisClient *redis.Client
 	channel     string
 	in          chan any
+	logger      *slog.Logger
 }
 
 var _ streams.Sink = (*PubSubSink)(nil)
 
-// NewPubSubSink returns a new PubSubSink instance.
+// NewPubSubSink returns a new [PubSubSink] connector.
 //
 // The incoming messages will be published to the given target channel using
 // the provided redis.Client.
 func NewPubSubSink(ctx context.Context, redisClient *redis.Client,
-	channel string) *PubSubSink {
+	channel string, logger *slog.Logger) *PubSubSink {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger = logger.With(slog.Group("connector",
+		slog.String("name", "redis.pubsub"),
+		slog.String("type", "sink")))
+
 	sink := &PubSubSink{
 		redisClient: redisClient,
 		channel:     channel,
 		in:          make(chan any),
+		logger:      logger,
 	}
 	go sink.init(ctx)
 
@@ -109,15 +128,16 @@ func (ps *PubSubSink) init(ctx context.Context) {
 		switch message := msg.(type) {
 		case string:
 			if err := ps.redisClient.Publish(ctx, ps.channel, message).Err(); err != nil {
-				log.Printf("Error in Publish: %s", err)
+				ps.logger.Error("Error in client.Publish", slog.Any("error", err))
 			}
 		default:
-			log.Printf("Unsupported message type: %T", message)
+			ps.logger.Error("Unsupported message type",
+				slog.String("type", fmt.Sprintf("%T", message)))
 		}
 	}
-	log.Printf("Closing Redis PubSubSink connector")
+	ps.logger.Info("Closing connector")
 	if err := ps.redisClient.Close(); err != nil {
-		log.Printf("Error in Close: %s", err)
+		ps.logger.Warn("Error in client.Close", slog.Any("error", err))
 	}
 }
 

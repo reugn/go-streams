@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	aero "github.com/aerospike/aerospike-client-go/v6"
+	aero "github.com/aerospike/aerospike-client-go/v7"
 	"github.com/reugn/go-streams/aerospike"
 	"github.com/reugn/go-streams/flow"
 )
@@ -30,7 +30,7 @@ func main() {
 		QueryPolicy:     queryPolicy,
 		Namespace:       "test",
 		SetName:         "source",
-	})
+	}, nil)
 
 	mapFlow := flow.NewMap(transform, 1)
 
@@ -42,7 +42,7 @@ func main() {
 		BatchWritePolicy:    batchWritePolicy,
 		Namespace:           "test",
 		SetName:             "sink",
-	})
+	}, nil)
 
 	source.
 		Via(mapFlow).

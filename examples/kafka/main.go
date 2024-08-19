@@ -23,20 +23,24 @@ func main() {
 	config.Version, _ = sarama.ParseKafkaVersion("3.6.2")
 	groupID := "testConsumer"
 
-	source, err := ext.NewKafkaSource(ctx, hosts, groupID, config, "test")
+	consumerGroup, err := sarama.NewConsumerGroup(hosts, groupID, config)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	source := ext.NewSaramaSource(ctx, consumerGroup, []string{"test"}, nil)
+
+	syncProducer, err := sarama.NewSyncProducer(hosts, config)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	sink := ext.NewSaramaSink(syncProducer, "test2", nil)
 
 	toUpperMapFlow := flow.NewMap(toUpper, 1)
-	appendAsteriskFlatMapFlow := flow.NewFlatMap(appendAsterisk, 1)
-	sink, err := ext.NewKafkaSink(hosts, config, "test2")
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	throttler := flow.NewThrottler(1, time.Second, 50, flow.Discard)
 	tumblingWindow := flow.NewTumblingWindow[*sarama.ConsumerMessage](time.Second * 5)
+	appendAsteriskFlatMapFlow := flow.NewFlatMap(appendAsterisk, 1)
 
 	source.
 		Via(toUpperMapFlow).

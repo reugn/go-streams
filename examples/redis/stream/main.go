@@ -38,13 +38,14 @@ func main() {
 	// 	StartID:  "$",
 	// 	MkStream: true,
 	// }
-	source, err := rs.NewStreamSource(ctx, redisClient, readGroupArgs, nil)
+	source, err := rs.NewStreamSource(ctx, redisClient, readGroupArgs,
+		nil, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	toUpperMapFlow := flow.NewMap(toUpper, 1)
-	sink := rs.NewStreamSink(ctx, redisClient, "stream2")
+	sink := rs.NewStreamSink(ctx, redisClient, "stream2", nil)
 
 	source.
 		Via(toUpperMapFlow).

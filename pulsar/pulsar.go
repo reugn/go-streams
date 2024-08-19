@@ -2,25 +2,27 @@ package pulsar
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"log/slog"
 
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/reugn/go-streams"
 	"github.com/reugn/go-streams/flow"
 )
 
-// PulsarSource represents an Apache Pulsar source connector.
-type PulsarSource struct {
+// Source represents an Apache Pulsar source connector.
+type Source struct {
 	client   pulsar.Client
 	consumer pulsar.Consumer
 	out      chan any
+	logger   *slog.Logger
 }
 
-var _ streams.Source = (*PulsarSource)(nil)
+var _ streams.Source = (*Source)(nil)
 
-// NewPulsarSource returns a new PulsarSource connector.
-func NewPulsarSource(ctx context.Context, clientOptions *pulsar.ClientOptions,
-	consumerOptions *pulsar.ConsumerOptions) (*PulsarSource, error) {
+// NewSource returns a new [Source] connector.
+func NewSource(ctx context.Context, clientOptions *pulsar.ClientOptions,
+	consumerOptions *pulsar.ConsumerOptions, logger *slog.Logger) (*Source, error) {
 	client, err := pulsar.NewClient(*clientOptions)
 	if err != nil {
 		return nil, err
@@ -31,17 +33,25 @@ func NewPulsarSource(ctx context.Context, clientOptions *pulsar.ClientOptions,
 		return nil, err
 	}
 
-	source := &PulsarSource{
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger = logger.With(slog.Group("connector",
+		slog.String("name", "pulsar"),
+		slog.String("type", "source")))
+
+	source := &Source{
 		client:   client,
 		consumer: consumer,
 		out:      make(chan any),
+		logger:   logger,
 	}
 	go source.init(ctx)
 
 	return source, nil
 }
 
-func (ps *PulsarSource) init(ctx context.Context) {
+func (ps *Source) init(ctx context.Context) {
 loop:
 	for {
 		select {
@@ -51,41 +61,43 @@ loop:
 			// this call blocks until a message is available
 			msg, err := ps.consumer.Receive(ctx)
 			if err != nil {
-				log.Printf("Error is Receive: %s", err)
+				ps.logger.Error("Error in consumer.Receive",
+					slog.Any("error", err))
 				continue
 			}
 			ps.out <- msg
 		}
 	}
-	log.Printf("Closing Pulsar source connector")
+	ps.logger.Info("Closing connector")
 	close(ps.out)
 	ps.consumer.Close()
 	ps.client.Close()
 }
 
 // Via streams data to a specified operator and returns it.
-func (ps *PulsarSource) Via(operator streams.Flow) streams.Flow {
+func (ps *Source) Via(operator streams.Flow) streams.Flow {
 	flow.DoStream(ps, operator)
 	return operator
 }
 
 // Out returns the output channel of the PulsarSource connector.
-func (ps *PulsarSource) Out() <-chan any {
+func (ps *Source) Out() <-chan any {
 	return ps.out
 }
 
-// PulsarSink represents an Apache Pulsar sink connector.
-type PulsarSink struct {
+// Sink represents an Apache Pulsar sink connector.
+type Sink struct {
 	client   pulsar.Client
 	producer pulsar.Producer
 	in       chan any
+	logger   *slog.Logger
 }
 
-var _ streams.Sink = (*PulsarSink)(nil)
+var _ streams.Sink = (*Sink)(nil)
 
-// NewPulsarSink returns a new PulsarSink connector.
-func NewPulsarSink(ctx context.Context, clientOptions *pulsar.ClientOptions,
-	producerOptions *pulsar.ProducerOptions) (*PulsarSink, error) {
+// NewSink returns a new [Sink] connector.
+func NewSink(ctx context.Context, clientOptions *pulsar.ClientOptions,
+	producerOptions *pulsar.ProducerOptions, logger *slog.Logger) (*Sink, error) {
 	client, err := pulsar.NewClient(*clientOptions)
 	if err != nil {
 		return nil, err
@@ -96,17 +108,25 @@ func NewPulsarSink(ctx context.Context, clientOptions *pulsar.ClientOptions,
 		return nil, err
 	}
 
-	sink := &PulsarSink{
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger = logger.With(slog.Group("connector",
+		slog.String("name", "pulsar"),
+		slog.String("type", "sink")))
+
+	sink := &Sink{
 		client:   client,
 		producer: producer,
 		in:       make(chan any),
+		logger:   logger,
 	}
 	go sink.init(ctx)
 
 	return sink, nil
 }
 
-func (ps *PulsarSink) init(ctx context.Context) {
+func (ps *Sink) init(ctx context.Context) {
 	for msg := range ps.in {
 		var err error
 		switch message := msg.(type) {
@@ -119,19 +139,20 @@ func (ps *PulsarSink) init(ctx context.Context) {
 				Payload: []byte(message),
 			})
 		default:
-			log.Printf("Unsupported message type: %T", message)
+			ps.logger.Error("Unsupported message type",
+				slog.String("type", fmt.Sprintf("%T", message)))
 		}
 
 		if err != nil {
-			log.Printf("Error processing Pulsar message: %s", err)
+			ps.logger.Error("Error processing message", slog.Any("error", err))
 		}
 	}
-	log.Printf("Closing Pulsar sink connector")
+	ps.logger.Info("Closing connector")
 	ps.producer.Close()
 	ps.client.Close()
 }
 
 // In returns the input channel of the PulsarSink connector.
-func (ps *PulsarSink) In() chan<- any {
+func (ps *Sink) In() chan<- any {
 	return ps.in
 }

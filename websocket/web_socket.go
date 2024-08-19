@@ -2,7 +2,8 @@ package websocket
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"log/slog"
 
 	ws "github.com/gorilla/websocket"
 	"github.com/reugn/go-streams"
@@ -22,27 +23,36 @@ type Message struct {
 type Source struct {
 	connection *ws.Conn
 	out        chan any
+	logger     *slog.Logger
 }
 
 var _ streams.Source = (*Source)(nil)
 
-// NewSource creates and returns a new Source using the default dialer.
-func NewSource(ctx context.Context, url string) (*Source, error) {
-	return NewSourceWithDialer(ctx, url, ws.DefaultDialer)
+// NewSource creates and returns a new [Source] using the default dialer.
+func NewSource(ctx context.Context, url string, logger *slog.Logger) (*Source, error) {
+	return NewSourceWithDialer(ctx, url, ws.DefaultDialer, logger)
 }
 
-// NewSourceWithDialer returns a new Source using the specified dialer.
+// NewSourceWithDialer returns a new [Source] using the specified dialer.
 func NewSourceWithDialer(ctx context.Context, url string,
-	dialer *ws.Dialer) (*Source, error) {
+	dialer *ws.Dialer, logger *slog.Logger) (*Source, error) {
 	// create a new client connection
 	conn, _, err := dialer.Dial(url, nil)
 	if err != nil {
 		return nil, err
 	}
 
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger = logger.With(slog.Group("connector",
+		slog.String("name", "websocket"),
+		slog.String("type", "source")))
+
 	source := &Source{
 		connection: conn,
 		out:        make(chan any),
+		logger:     logger,
 	}
 	go source.init(ctx)
 
@@ -58,7 +68,8 @@ loop:
 		default:
 			messageType, payload, err := wsock.connection.ReadMessage()
 			if err != nil {
-				log.Printf("Error in ReadMessage: %s", err)
+				wsock.logger.Error("Error in connection.ReadMessage",
+					slog.Any("error", err))
 			} else {
 				// exit loop on CloseMessage
 				if messageType == ws.CloseMessage {
@@ -71,10 +82,10 @@ loop:
 			}
 		}
 	}
-	log.Print("Closing WebSocket source connector")
+	wsock.logger.Info("Closing connector")
 	close(wsock.out)
 	if err := wsock.connection.Close(); err != nil {
-		log.Printf("Error in Close: %s", err)
+		wsock.logger.Warn("Error in connection.Close", slog.Any("error", err))
 	}
 }
 
@@ -93,26 +104,35 @@ func (wsock *Source) Out() <-chan any {
 type Sink struct {
 	connection *ws.Conn
 	in         chan any
+	logger     *slog.Logger
 }
 
 var _ streams.Sink = (*Sink)(nil)
 
-// NewSink creates and returns a new Sink using the default dialer.
-func NewSink(url string) (*Sink, error) {
-	return NewSinkWithDialer(url, ws.DefaultDialer)
+// NewSink creates and returns a new [Sink] using the default dialer.
+func NewSink(url string, logger *slog.Logger) (*Sink, error) {
+	return NewSinkWithDialer(url, ws.DefaultDialer, logger)
 }
 
-// NewSinkWithDialer returns a new Sink using the specified dialer.
-func NewSinkWithDialer(url string, dialer *ws.Dialer) (*Sink, error) {
+// NewSinkWithDialer returns a new [Sink] using the specified dialer.
+func NewSinkWithDialer(url string, dialer *ws.Dialer, logger *slog.Logger) (*Sink, error) {
 	// create a new client connection
 	conn, _, err := dialer.Dial(url, nil)
 	if err != nil {
 		return nil, err
 	}
 
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger = logger.With(slog.Group("connector",
+		slog.String("name", "websocket"),
+		slog.String("type", "sink")))
+
 	sink := &Sink{
 		connection: conn,
 		in:         make(chan any),
+		logger:     logger,
 	}
 	go sink.init()
 
@@ -132,16 +152,18 @@ func (wsock *Sink) init() {
 		case []byte:
 			err = wsock.connection.WriteMessage(ws.BinaryMessage, m)
 		default:
-			log.Printf("Unsupported message type: %T", m)
+			wsock.logger.Error("Unsupported message type",
+				slog.String("type", fmt.Sprintf("%T", m)))
 		}
 
 		if err != nil {
-			log.Printf("Error processing WebSocket message: %s", err)
+			wsock.logger.Error("Error processing message",
+				slog.Any("error", err))
 		}
 	}
-	log.Print("Closing WebSocket sink connector")
+	wsock.logger.Info("Closing connector")
 	if err := wsock.connection.Close(); err != nil {
-		log.Printf("Error in Close: %s", err)
+		wsock.logger.Warn("Error in connection.Close", slog.Any("error", err))
 	}
 }
 

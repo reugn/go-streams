@@ -32,6 +32,7 @@ Implemented Flows ([flow](https://github.com/reugn/go-streams/tree/master/flow) 
 * SlidingWindow
 * TumblingWindow
 * SessionWindow
+* Keyed
 
 Supported Connectors:
 * Go channels

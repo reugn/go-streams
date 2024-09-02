@@ -7,4 +7,4 @@ require (
 	github.com/reugn/go-streams v0.10.0
 )
 
-require golang.org/x/net v0.21.0 // indirect
+require golang.org/x/net v0.23.0 // indirect

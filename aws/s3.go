@@ -151,7 +151,7 @@ func (s *S3Source) getObjects(ctx context.Context) {
 						Data: bytes.NewReader(data),
 					}
 				case <-ctx.Done():
-					s.logger.Debug("Object reading finished", slog.Any("error", ctx.Err()))
+					s.logger.Debug("Object reading terminated", slog.Any("error", ctx.Err()))
 					break loop
 				}
 			}
@@ -208,7 +208,7 @@ type S3Sink struct {
 var _ streams.Sink = (*S3Sink)(nil)
 
 // NewS3Sink returns a new [S3Sink].
-// Incoming elements are expected to be of the [S3PutObject] type. These will
+// Incoming elements are expected to be of the [S3Object] type. These will
 // be uploaded to the configured bucket using their key field as the path.
 func NewS3Sink(ctx context.Context, client *s3.Client,
 	config *S3SinkConfig, logger *slog.Logger) *S3Sink {
@@ -278,10 +278,10 @@ func (s *S3Sink) writeObject(ctx context.Context, putObject *S3Object) error {
 		Body:   putObject.Data,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to put object: %w", err)
+		return fmt.Errorf("failed to put object %s: %w", putObject.Key, err)
 	}
 
-	s.logger.Debug("Successfully put object", slog.String("key", putObject.Key),
+	s.logger.Debug("Object successfully stored", slog.String("key", putObject.Key),
 		slog.Any("etag", putObjectOutput.ETag))
 
 	return nil

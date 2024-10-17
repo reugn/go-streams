@@ -43,6 +43,7 @@ Supported Connectors:
 * [Apache Kafka](https://kafka.apache.org/)
 * [Apache Pulsar](https://pulsar.apache.org/)
 * AWS ([S3](https://aws.amazon.com/s3/))
+* Azure ([Blob Storage](https://azure.microsoft.com/en-us/products/storage/blobs/))
 * GCP ([Storage](https://cloud.google.com/storage/))
 * [NATS](https://nats.io/)
 * [Redis](https://redis.io/)

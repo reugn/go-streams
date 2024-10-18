@@ -4,6 +4,7 @@ go 1.21.0
 
 require (
 	cloud.google.com/go/storage v1.43.0
+	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.4.1
 	github.com/IBM/sarama v1.43.3
 	github.com/aerospike/aerospike-client-go/v7 v7.6.1
 	github.com/apache/pulsar-client-go v0.13.1
@@ -17,6 +18,7 @@ require (
 	github.com/reugn/go-streams v0.10.0
 	github.com/reugn/go-streams/aerospike v0.0.0
 	github.com/reugn/go-streams/aws v0.0.0
+	github.com/reugn/go-streams/azure v0.0.0
 	github.com/reugn/go-streams/gcp v0.0.0
 	github.com/reugn/go-streams/kafka v0.0.0
 	github.com/reugn/go-streams/nats v0.0.0
@@ -35,6 +37,8 @@ require (
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
 	github.com/99designs/keyring v1.2.2 // indirect
 	github.com/AthenZ/athenz v1.11.63 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.14.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/internal v1.10.0 // indirect
 	github.com/DataDog/zstd v1.5.6 // indirect
 	github.com/ardielle/ardielle-go v1.5.2 // indirect
 	github.com/armon/go-metrics v0.0.0-20190430140413-ec5e00d3c878 // indirect
@@ -150,6 +154,7 @@ require (
 replace (
 	github.com/reugn/go-streams/aerospike => ../aerospike
 	github.com/reugn/go-streams/aws => ../aws
+	github.com/reugn/go-streams/azure => ../azure
 	github.com/reugn/go-streams/gcp => ../gcp
 	github.com/reugn/go-streams/kafka => ../kafka
 	github.com/reugn/go-streams/nats => ../nats

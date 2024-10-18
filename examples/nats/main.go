@@ -105,7 +105,7 @@ func jetStream() {
 	}
 
 	fetchJetMsgMapFlow := flow.NewMap(fetchJetMsg, 1)
-	stdOutSInk := extension.NewStdoutSink()
+	stdOutSink := extension.NewStdoutSink()
 
 	fileSource.
 		Via(toUpperMapFlow).
@@ -113,7 +113,7 @@ func jetStream() {
 
 	jetSource.
 		Via(fetchJetMsgMapFlow).
-		To(stdOutSInk)
+		To(stdOutSink)
 }
 
 // docker run --rm --name nats-streaming -p 4223:4223 -p 8223:8223 nats-streaming -p 4223 -m 8223
@@ -139,7 +139,7 @@ func streaming() {
 	streamingSource := ext.NewStreamingSource(ctx, subConn, stan.StartWithLastReceived(),
 		[]string{"topic1"}, nil)
 	fetchStanMsgMapFlow := flow.NewMap(fetchStanMsg, 1)
-	stdOutSInk := extension.NewStdoutSink()
+	stdOutSink := extension.NewStdoutSink()
 
 	fileSource.
 		Via(toUpperMapFlow).
@@ -147,7 +147,7 @@ func streaming() {
 
 	streamingSource.
 		Via(fetchStanMsgMapFlow).
-		To(stdOutSInk)
+		To(stdOutSink)
 }
 
 var toUpperString = func(msg string) []byte {

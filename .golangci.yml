@@ -6,7 +6,6 @@ linters:
   enable:
     - dupl
     - errcheck
-    - exportloopref
     - funlen
     - gci
     - goconst
@@ -14,15 +13,19 @@ linters:
     - gocyclo
     - gofmt
     - goimports
+    - gosec
     - gosimple
     - govet
     - ineffassign
     - lll
     - misspell
+    - nolintlint
     - prealloc
     - revive
     - staticcheck
     - stylecheck
+    - thelper
+    - tparallel
     - typecheck
     - unconvert
     - unparam
@@ -32,6 +35,9 @@ linters-settings:
   gocritic:
     disabled-checks:
       - exitAfterDefer
+  thelper:
+    test:
+      begin: false
 
 issues:
   exclude-rules:

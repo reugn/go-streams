@@ -3,8 +3,8 @@ module github.com/reugn/go-streams/aerospike
 go 1.21.0
 
 require (
-	github.com/aerospike/aerospike-client-go/v7 v7.6.1
-	github.com/reugn/go-streams v0.10.0
+	github.com/aerospike/aerospike-client-go/v7 v7.8.0
+	github.com/reugn/go-streams v0.11.0
 )
 
 require (

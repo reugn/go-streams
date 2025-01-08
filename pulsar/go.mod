@@ -1,10 +1,10 @@
 module github.com/reugn/go-streams/pulsar
 
-go 1.21.0
+go 1.22.0
 
 require (
-	github.com/apache/pulsar-client-go v0.13.1
-	github.com/reugn/go-streams v0.10.0
+	github.com/apache/pulsar-client-go v0.14.0
+	github.com/reugn/go-streams v0.11.0
 )
 
 require (

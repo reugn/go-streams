@@ -15,7 +15,8 @@ type Source struct {
 	client   pulsar.Client
 	consumer pulsar.Consumer
 	out      chan any
-	logger   *slog.Logger
+
+	logger *slog.Logger
 }
 
 var _ streams.Source = (*Source)(nil)
@@ -25,12 +26,12 @@ func NewSource(ctx context.Context, clientOptions *pulsar.ClientOptions,
 	consumerOptions *pulsar.ConsumerOptions, logger *slog.Logger) (*Source, error) {
 	client, err := pulsar.NewClient(*clientOptions)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
 	consumer, err := client.Subscribe(*consumerOptions)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to subscribe: %w", err)
 	}
 
 	if logger == nil {
@@ -46,12 +47,14 @@ func NewSource(ctx context.Context, clientOptions *pulsar.ClientOptions,
 		out:      make(chan any),
 		logger:   logger,
 	}
-	go source.init(ctx)
+
+	// asynchronously consume data and send it downstream
+	go source.process(ctx)
 
 	return source, nil
 }
 
-func (ps *Source) init(ctx context.Context) {
+func (ps *Source) process(ctx context.Context) {
 loop:
 	for {
 		select {
@@ -68,19 +71,20 @@ loop:
 			ps.out <- msg
 		}
 	}
+
 	ps.logger.Info("Closing connector")
 	close(ps.out)
 	ps.consumer.Close()
 	ps.client.Close()
 }
 
-// Via streams data to a specified operator and returns it.
+// Via asynchronously streams data to the given Flow and returns it.
 func (ps *Source) Via(operator streams.Flow) streams.Flow {
 	flow.DoStream(ps, operator)
 	return operator
 }
 
-// Out returns the output channel of the PulsarSource connector.
+// Out returns the output channel of the Source connector.
 func (ps *Source) Out() <-chan any {
 	return ps.out
 }
@@ -90,7 +94,9 @@ type Sink struct {
 	client   pulsar.Client
 	producer pulsar.Producer
 	in       chan any
-	logger   *slog.Logger
+
+	done   chan struct{}
+	logger *slog.Logger
 }
 
 var _ streams.Sink = (*Sink)(nil)
@@ -100,12 +106,12 @@ func NewSink(ctx context.Context, clientOptions *pulsar.ClientOptions,
 	producerOptions *pulsar.ProducerOptions, logger *slog.Logger) (*Sink, error) {
 	client, err := pulsar.NewClient(*clientOptions)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
 	producer, err := client.CreateProducer(*producerOptions)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create producer: %w", err)
 	}
 
 	if logger == nil {
@@ -119,14 +125,19 @@ func NewSink(ctx context.Context, clientOptions *pulsar.ClientOptions,
 		client:   client,
 		producer: producer,
 		in:       make(chan any),
+		done:     make(chan struct{}),
 		logger:   logger,
 	}
-	go sink.init(ctx)
+
+	// begin processing upstream data
+	go sink.process(ctx)
 
 	return sink, nil
 }
 
-func (ps *Sink) init(ctx context.Context) {
+func (ps *Sink) process(ctx context.Context) {
+	defer close(ps.done) // signal data processing completion
+
 	for msg := range ps.in {
 		var err error
 		switch message := msg.(type) {
@@ -147,12 +158,19 @@ func (ps *Sink) init(ctx context.Context) {
 			ps.logger.Error("Error processing message", slog.Any("error", err))
 		}
 	}
+
 	ps.logger.Info("Closing connector")
 	ps.producer.Close()
 	ps.client.Close()
 }
 
-// In returns the input channel of the PulsarSink connector.
+// In returns the input channel of the Sink connector.
 func (ps *Sink) In() chan<- any {
 	return ps.in
+}
+
+// AwaitCompletion blocks until the Sink connector has completed
+// processing all the received data.
+func (ps *Sink) AwaitCompletion() {
+	<-ps.done
 }

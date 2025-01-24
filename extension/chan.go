@@ -18,7 +18,7 @@ func NewChanSource(in chan any) *ChanSource {
 	return &ChanSource{in}
 }
 
-// Via streams data to a specified operator and returns it.
+// Via asynchronously streams data to the given Flow and returns it.
 func (cs *ChanSource) Via(operator streams.Flow) streams.Flow {
 	flow.DoStream(cs, operator)
 	return operator
@@ -45,4 +45,9 @@ func NewChanSink(out chan any) *ChanSink {
 // In returns the input channel of the ChanSink connector.
 func (ch *ChanSink) In() chan<- any {
 	return ch.Out
+}
+
+// AwaitCompletion is a no-op for the ChanSink.
+func (ch *ChanSink) AwaitCompletion() {
+	// no-op
 }

@@ -28,15 +28,17 @@ func NewPassThrough() *PassThrough {
 	return passThrough
 }
 
-// Via streams data to a specified Flow and returns it.
+// Via asynchronously streams data to the given Flow and returns it.
 func (pt *PassThrough) Via(flow streams.Flow) streams.Flow {
 	go pt.transmit(flow)
 	return flow
 }
 
-// To streams data to a specified Sink.
+// To streams data to the given Sink and blocks until the Sink has completed
+// processing all data.
 func (pt *PassThrough) To(sink streams.Sink) {
 	pt.transmit(sink)
+	sink.AwaitCompletion()
 }
 
 // Out returns the output channel of the PassThrough operator.

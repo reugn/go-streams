@@ -70,15 +70,17 @@ func (k *Keyed[K, V]) stream() {
 	close(k.out)
 }
 
-// Via streams data to a specified Flow and returns it.
+// Via asynchronously streams data to the given Flow and returns it.
 func (k *Keyed[K, V]) Via(flow streams.Flow) streams.Flow {
 	go k.transmit(flow)
 	return flow
 }
 
-// To streams data to a specified Sink.
+// To streams data to the given Sink and blocks until the Sink has completed
+// processing all data.
 func (k *Keyed[K, V]) To(sink streams.Sink) {
 	k.transmit(sink)
+	sink.AwaitCompletion()
 }
 
 // Out returns the output channel of the Keyed operator.

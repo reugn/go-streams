@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
 
 	"cloud.google.com/go/storage"
 	"github.com/reugn/go-streams/flow"
@@ -45,8 +44,6 @@ func main() {
 	source.
 		Via(mapObjects).
 		To(sink)
-
-	time.Sleep(time.Second)
 }
 
 var transform = func(object *connector.StorageObject) *connector.StorageObject {

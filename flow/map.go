@@ -47,15 +47,17 @@ func NewMap[T, R any](mapFunction MapFunction[T, R], parallelism int) *Map[T, R]
 	return mapFlow
 }
 
-// Via streams data to a specified Flow and returns it.
+// Via asynchronously streams data to the given Flow and returns it.
 func (m *Map[T, R]) Via(flow streams.Flow) streams.Flow {
 	go m.transmit(flow)
 	return flow
 }
 
-// To streams data to a specified Sink.
+// To streams data to the given Sink and blocks until the Sink has completed
+// processing all data.
 func (m *Map[T, R]) To(sink streams.Sink) {
 	m.transmit(sink)
+	sink.AwaitCompletion()
 }
 
 // Out returns the output channel of the Map operator.

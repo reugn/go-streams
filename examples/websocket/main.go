@@ -47,7 +47,7 @@ func (server *wsServer) init() {
 	}()
 
 	log.Print("http server started on :8080")
-	err := http.ListenAndServe(":8080", nil)
+	err := http.ListenAndServe(":8080", nil) //nolint:gosec
 	if err != nil {
 		log.Fatalf("Error in http.ListAndServe: %s", err)
 	}

@@ -46,15 +46,17 @@ func NewBatch[T any](maxBatchSize int, timeInterval time.Duration) *Batch[T] {
 	return batchFlow
 }
 
-// Via streams data to a specified Flow and returns it.
+// Via asynchronously streams data to the given Flow and returns it.
 func (b *Batch[T]) Via(flow streams.Flow) streams.Flow {
 	go b.transmit(flow)
 	return flow
 }
 
-// To streams data to a specified Sink.
+// To streams data to the given Sink and blocks until the Sink has completed
+// processing all data.
 func (b *Batch[T]) To(sink streams.Sink) {
 	b.transmit(sink)
+	sink.AwaitCompletion()
 }
 
 // Out returns the output channel of the Batch operator.

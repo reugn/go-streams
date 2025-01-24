@@ -22,7 +22,8 @@ type StreamSource struct {
 	readGroupArgs   *redis.XReadGroupArgs
 	groupCreateArgs *XGroupCreateArgs
 	out             chan any
-	logger          *slog.Logger
+
+	logger *slog.Logger
 }
 
 var _ streams.Source = (*StreamSource)(nil)
@@ -65,7 +66,7 @@ func NewStreamSource(ctx context.Context, redisClient *redis.Client,
 				groupCreateArgs.StartID).Err()
 		}
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to create consumer group: %w", err)
 		}
 	}
 
@@ -83,12 +84,14 @@ func NewStreamSource(ctx context.Context, redisClient *redis.Client,
 		out:             make(chan any),
 		logger:          logger,
 	}
-	go source.init(ctx)
+
+	// asynchronously consume data and send it downstream
+	go source.process(ctx)
 
 	return source, nil
 }
 
-func (rs *StreamSource) init(ctx context.Context) {
+func (rs *StreamSource) process(ctx context.Context) {
 loop:
 	for {
 		select {
@@ -99,20 +102,20 @@ loop:
 			// support for consumer groups.
 			entries, err := rs.redisClient.XReadGroup(ctx, rs.readGroupArgs).Result()
 			if err != nil {
-				rs.logger.Error("Error in client.XReadGroup",
-					slog.Any("error", err))
+				rs.logger.Error("Error in client.XReadGroup", slog.Any("error", err))
 				if strings.HasPrefix(err.Error(), "NOGROUP") {
 					break loop
 				}
 			}
 			// route incoming messages downstream
 			for _, stream := range entries {
-				for _, msg := range stream.Messages {
-					rs.out <- &msg
+				for _, message := range stream.Messages {
+					rs.out <- &message
 				}
 			}
 		}
 	}
+
 	rs.logger.Info("Closing connector")
 	close(rs.out)
 	if err := rs.redisClient.Close(); err != nil {
@@ -120,7 +123,7 @@ loop:
 	}
 }
 
-// Via streams data to a specified operator and returns it.
+// Via asynchronously streams data to the given Flow and returns it.
 func (rs *StreamSource) Via(operator streams.Flow) streams.Flow {
 	flow.DoStream(rs, operator)
 	return operator
@@ -136,7 +139,9 @@ type StreamSink struct {
 	redisClient *redis.Client
 	stream      string
 	in          chan any
-	logger      *slog.Logger
+
+	done   chan struct{}
+	logger *slog.Logger
 }
 
 var _ streams.Sink = (*StreamSink)(nil)
@@ -158,14 +163,19 @@ func NewStreamSink(ctx context.Context, redisClient *redis.Client,
 		redisClient: redisClient,
 		stream:      stream,
 		in:          make(chan any),
+		done:        make(chan struct{}),
 		logger:      logger,
 	}
-	go sink.init(ctx)
+
+	// begin processing upstream data
+	go sink.process(ctx)
 
 	return sink
 }
 
-func (rs *StreamSink) init(ctx context.Context) {
+func (rs *StreamSink) process(ctx context.Context) {
+	defer close(rs.done) // signal data processing completion
+
 	for msg := range rs.in {
 		switch message := msg.(type) {
 		case *redis.XMessage:
@@ -183,6 +193,7 @@ func (rs *StreamSink) init(ctx context.Context) {
 				slog.String("type", fmt.Sprintf("%T", message)))
 		}
 	}
+
 	rs.logger.Info("Closing connector")
 	if err := rs.redisClient.Close(); err != nil {
 		rs.logger.Warn("Error in client.Close", slog.Any("error", err))
@@ -201,4 +212,10 @@ func (rs *StreamSink) xAdd(ctx context.Context, args *redis.XAddArgs) {
 // In returns the input channel of the StreamSink connector.
 func (rs *StreamSink) In() chan<- any {
 	return rs.in
+}
+
+// AwaitCompletion blocks until the StreamSink connector has completed
+// processing all the received data.
+func (rs *StreamSink) AwaitCompletion() {
+	<-rs.done
 }

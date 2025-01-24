@@ -18,7 +18,8 @@ type StreamingSource struct {
 	subscriptionType stan.SubscriptionOption
 	topics           []string
 	out              chan any
-	logger           *slog.Logger
+
+	logger *slog.Logger
 }
 
 var _ streams.Source = (*StreamingSource)(nil)
@@ -42,15 +43,17 @@ func NewStreamingSource(ctx context.Context, conn stan.Conn,
 		out:              make(chan any),
 		logger:           logger,
 	}
-	go streamingSource.init(ctx)
+
+	// asynchronously consume data and send it downstream
+	go streamingSource.process(ctx)
 
 	return streamingSource
 }
 
-func (ns *StreamingSource) init(ctx context.Context) {
+func (ns *StreamingSource) process(ctx context.Context) {
 	// bind all topic subscribers
 	for _, topic := range ns.topics {
-		sub, err := ns.conn.Subscribe(topic, func(msg *stan.Msg) {
+		subscription, err := ns.conn.Subscribe(topic, func(msg *stan.Msg) {
 			ns.out <- msg
 		}, ns.subscriptionType)
 		if err != nil {
@@ -59,9 +62,9 @@ func (ns *StreamingSource) init(ctx context.Context) {
 				slog.Any("error", err))
 			continue
 		}
-		ns.logger.Info("Subscribed to topic",
-			slog.String("topic", topic))
-		ns.subscriptions = append(ns.subscriptions, sub)
+
+		ns.logger.Info("Subscribed to topic", slog.String("topic", topic))
+		ns.subscriptions = append(ns.subscriptions, subscription)
 	}
 
 	<-ctx.Done()
@@ -69,6 +72,7 @@ func (ns *StreamingSource) init(ctx context.Context) {
 	ns.logger.Info("Closing connector")
 	close(ns.out)
 	ns.unsubscribe() // unbind all topic subscriptions
+
 	if err := ns.conn.Close(); err != nil {
 		ns.logger.Warn("Error in conn.Close", slog.Any("error", err))
 	}
@@ -83,7 +87,7 @@ func (ns *StreamingSource) unsubscribe() {
 	}
 }
 
-// Via streams data to a specified operator and returns it.
+// Via asynchronously streams data to the given Flow and returns it.
 func (ns *StreamingSource) Via(operator streams.Flow) streams.Flow {
 	flow.DoStream(ns, operator)
 	return operator
@@ -97,9 +101,11 @@ func (ns *StreamingSource) Out() <-chan any {
 // StreamingSink represents a NATS Streaming sink connector.
 // Deprecated: Use [JetStreamSink] instead.
 type StreamingSink struct {
-	conn   stan.Conn
-	topic  string
-	in     chan any
+	conn  stan.Conn
+	topic string
+	in    chan any
+
+	done   chan struct{}
 	logger *slog.Logger
 }
 
@@ -119,14 +125,19 @@ func NewStreamingSink(conn stan.Conn, topic string,
 		conn:   conn,
 		topic:  topic,
 		in:     make(chan any),
+		done:   make(chan struct{}),
 		logger: logger,
 	}
-	go streamingSink.init()
+
+	// begin processing upstream data
+	go streamingSink.process()
 
 	return streamingSink
 }
 
-func (ns *StreamingSink) init() {
+func (ns *StreamingSink) process() {
+	defer close(ns.done) // signal data processing completion
+
 	for msg := range ns.in {
 		var err error
 		switch message := msg.(type) {
@@ -144,6 +155,7 @@ func (ns *StreamingSink) init() {
 				slog.Any("error", err))
 		}
 	}
+
 	ns.logger.Info("Closing connector")
 	if err := ns.conn.Close(); err != nil {
 		ns.logger.Warn("Error in conn.Close", slog.Any("error", err))
@@ -153,4 +165,10 @@ func (ns *StreamingSink) init() {
 // In returns the input channel of the StreamingSink connector.
 func (ns *StreamingSink) In() chan<- any {
 	return ns.in
+}
+
+// AwaitCompletion blocks until the StreamingSink connector has completed
+// processing all the received data.
+func (ns *StreamingSink) AwaitCompletion() {
+	<-ns.done
 }

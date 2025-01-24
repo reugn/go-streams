@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -37,8 +36,6 @@ func main() {
 	source.
 		Via(mapObjects).
 		To(sink)
-
-	time.Sleep(time.Second)
 }
 
 func newS3Client(ctx context.Context) (*s3.Client, error) {

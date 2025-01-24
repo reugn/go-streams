@@ -42,7 +42,8 @@ type PollingSource struct {
 	statement   *aero.Statement
 	recordsChan chan *aero.Result
 	out         chan any
-	logger      *slog.Logger
+
+	logger *slog.Logger
 }
 
 var _ streams.Source = (*PollingSource)(nil)
@@ -78,7 +79,10 @@ func NewPollingSource(ctx context.Context, client *aero.Client,
 		logger:      logger,
 	}
 
+	// periodically monitor the database for changes
 	go source.pollChanges(ctx)
+
+	// send new or updated records downstream
 	go source.streamRecords(ctx)
 
 	return source
@@ -155,7 +159,7 @@ loop:
 	close(ps.out)
 }
 
-// Via streams data to a specified operator and returns it.
+// Via asynchronously streams data to the given Flow and returns it.
 func (ps *PollingSource) Via(operator streams.Flow) streams.Flow {
 	flow.DoStream(ps, operator)
 	return operator
@@ -213,6 +217,8 @@ type Sink struct {
 	config SinkConfig
 	buf    []*Record
 	in     chan any
+
+	done   chan struct{}
 	logger *slog.Logger
 }
 
@@ -231,6 +237,7 @@ func NewSink(client *aero.Client, config SinkConfig, logger *slog.Logger) *Sink 
 		client: client,
 		config: config,
 		in:     make(chan any),
+		done:   make(chan struct{}),
 		logger: logger,
 	}
 
@@ -246,6 +253,8 @@ func NewSink(client *aero.Client, config SinkConfig, logger *slog.Logger) *Sink 
 }
 
 func (as *Sink) processStream() {
+	defer close(as.done) // signal data processing completion
+
 	var flushTickerChan <-chan time.Time
 	if as.config.BatchSize > 1 && as.config.BufferFlushInterval > 0 {
 		ticker := time.NewTicker(as.config.BufferFlushInterval)
@@ -325,4 +334,9 @@ func (as *Sink) flushBuffer() {
 // In returns the input channel of the Sink connector.
 func (as *Sink) In() chan<- any {
 	return as.in
+}
+
+// AwaitCompletion blocks until the Sink connector has processed all the received data.
+func (as *Sink) AwaitCompletion() {
+	<-as.done
 }

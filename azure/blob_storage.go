@@ -31,7 +31,8 @@ type BlobStorageSource struct {
 	containerClient *container.Client
 	config          *BlobStorageSourceConfig
 	out             chan any
-	logger          *slog.Logger
+
+	logger *slog.Logger
 }
 
 var _ streams.Source = (*BlobStorageSource)(nil)
@@ -124,7 +125,7 @@ func (s *BlobStorageSource) listBlobsHierarchy(ctx context.Context, prefix, mark
 	}
 }
 
-// Via streams data to a specified operator and returns it.
+// Via asynchronously streams data to the given Flow and returns it.
 func (s *BlobStorageSource) Via(operator streams.Flow) streams.Flow {
 	flow.DoStream(s, operator)
 	return operator
@@ -161,6 +162,8 @@ type BlobStorageSink struct {
 	client *azblob.Client
 	config *BlobStorageSinkConfig
 	in     chan any
+
+	done   chan struct{}
 	logger *slog.Logger
 }
 
@@ -187,6 +190,7 @@ func NewBlobStorageSink(ctx context.Context, client *azblob.Client,
 		client: client,
 		config: config,
 		in:     make(chan any, config.Parallelism),
+		done:   make(chan struct{}),
 		logger: logger,
 	}
 
@@ -199,6 +203,8 @@ func NewBlobStorageSink(ctx context.Context, client *azblob.Client,
 // uploadBlobs writes incoming stream data elements to Azure Blob storage
 // using the configured parallelism.
 func (s *BlobStorageSink) uploadBlobs(ctx context.Context) {
+	defer close(s.done) // signal data processing completion
+
 	var wg sync.WaitGroup
 	for i := 0; i < s.config.Parallelism; i++ {
 		wg.Add(1)
@@ -231,7 +237,13 @@ func (s *BlobStorageSink) uploadBlobs(ctx context.Context) {
 
 // uploadBlob uploads a single blob to Azure Blob storage.
 func (s *BlobStorageSink) uploadBlob(ctx context.Context, object *BlobStorageObject) error {
-	defer object.Data.Close()
+	defer func() {
+		if err := object.Data.Close(); err != nil {
+			s.logger.Warn("Failed to close blob storage object",
+				slog.String("key", object.Key),
+				slog.Any("error", err))
+		}
+	}()
 	_, err := s.client.UploadStream(ctx, s.config.Container, object.Key, object.Data,
 		s.config.UploadOptions)
 	return err
@@ -240,4 +252,10 @@ func (s *BlobStorageSink) uploadBlob(ctx context.Context, object *BlobStorageObj
 // In returns the input channel of the BlobStorageSink connector.
 func (s *BlobStorageSink) In() chan<- any {
 	return s.in
+}
+
+// AwaitCompletion blocks until the BlobStorageSink connector has completed
+// processing all the received data.
+func (s *BlobStorageSink) AwaitCompletion() {
+	<-s.done
 }

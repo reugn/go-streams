@@ -16,7 +16,8 @@ type SaramaSource struct {
 	handler  sarama.ConsumerGroupHandler
 	topics   []string
 	out      chan any
-	logger   *slog.Logger
+
+	logger *slog.Logger
 }
 
 var _ streams.Source = (*SaramaSource)(nil)
@@ -39,19 +40,21 @@ func NewSaramaSource(ctx context.Context, consumerGroup sarama.ConsumerGroup,
 		logger: logger,
 	}
 
-	source := &SaramaSource{
+	saramaSource := &SaramaSource{
 		consumer: consumerGroup,
 		handler:  handler,
 		topics:   topics,
 		out:      out,
 		logger:   logger,
 	}
-	go source.init(ctx)
 
-	return source
+	// asynchronously consume messages and send them downstream
+	go saramaSource.process(ctx)
+
+	return saramaSource
 }
 
-func (ks *SaramaSource) init(ctx context.Context) {
+func (ks *SaramaSource) process(ctx context.Context) {
 loop:
 	for {
 		handler := ks.handler.(*groupHandler)
@@ -69,14 +72,16 @@ loop:
 		default:
 		}
 	}
+
 	ks.logger.Info("Closing connector")
 	close(ks.out)
+
 	if err := ks.consumer.Close(); err != nil {
 		ks.logger.Warn("Error in consumer.Close", slog.Any("error", err))
 	}
 }
 
-// Via streams data to a specified operator and returns it.
+// Via asynchronously streams data to the given Flow and returns it.
 func (ks *SaramaSource) Via(operator streams.Flow) streams.Flow {
 	flow.DoStream(ks, operator)
 	return operator
@@ -135,7 +140,9 @@ type SaramaSink struct {
 	producer sarama.SyncProducer
 	topic    string
 	in       chan any
-	logger   *slog.Logger
+
+	done   chan struct{}
+	logger *slog.Logger
 }
 
 var _ streams.Sink = (*SaramaSink)(nil)
@@ -150,18 +157,23 @@ func NewSaramaSink(syncProducer sarama.SyncProducer, topic string,
 		slog.String("name", "kafka.sarama"),
 		slog.String("type", "sink")))
 
-	sink := &SaramaSink{
+	saramaSink := &SaramaSink{
 		producer: syncProducer,
 		topic:    topic,
 		in:       make(chan any),
+		done:     make(chan struct{}),
 		logger:   logger,
 	}
-	go sink.init()
 
-	return sink
+	// begin processing upstream records
+	go saramaSink.process()
+
+	return saramaSink
 }
 
-func (ks *SaramaSink) init() {
+func (ks *SaramaSink) process() {
+	defer close(ks.done) // signal data processing completion
+
 	for msg := range ks.in {
 		var err error
 		switch message := msg.(type) {
@@ -189,6 +201,7 @@ func (ks *SaramaSink) init() {
 			ks.logger.Error("Error processing message", slog.Any("error", err))
 		}
 	}
+
 	ks.logger.Info("Closing connector")
 	if err := ks.producer.Close(); err != nil {
 		ks.logger.Warn("Error in producer.Close", slog.Any("error", err))
@@ -198,4 +211,10 @@ func (ks *SaramaSink) init() {
 // In returns the input channel of the SaramaSink connector.
 func (ks *SaramaSink) In() chan<- any {
 	return ks.in
+}
+
+// AwaitCompletion blocks until the SaramaSink connector has completed
+// processing all the received data.
+func (ks *SaramaSink) AwaitCompletion() {
+	<-ks.done
 }

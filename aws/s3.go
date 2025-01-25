@@ -38,7 +38,8 @@ type S3Source struct {
 	config   *S3SourceConfig
 	objectCh chan string
 	out      chan any
-	logger   *slog.Logger
+
+	logger *slog.Logger
 }
 
 var _ streams.Source = (*S3Source)(nil)
@@ -165,7 +166,7 @@ func (s *S3Source) getObjects(ctx context.Context) {
 	close(s.out)
 }
 
-// Via streams data to a specified operator and returns it.
+// Via asynchronously streams data to the given Flow and returns it.
 func (s *S3Source) Via(operator streams.Flow) streams.Flow {
 	flow.DoStream(s, operator)
 	return operator
@@ -202,6 +203,8 @@ type S3Sink struct {
 	client *s3.Client
 	config *S3SinkConfig
 	in     chan any
+
+	done   chan struct{}
 	logger *slog.Logger
 }
 
@@ -228,6 +231,7 @@ func NewS3Sink(ctx context.Context, client *s3.Client,
 		client: client,
 		config: config,
 		in:     make(chan any, config.Parallelism),
+		done:   make(chan struct{}),
 		logger: logger,
 	}
 
@@ -240,6 +244,8 @@ func NewS3Sink(ctx context.Context, client *s3.Client,
 // writeObjects writes incoming stream data elements to S3 using the
 // configured parallelism.
 func (s *S3Sink) writeObjects(ctx context.Context) {
+	defer close(s.done) // signal data processing completion
+
 	var wg sync.WaitGroup
 	for i := 0; i < s.config.Parallelism; i++ {
 		wg.Add(1)
@@ -290,4 +296,9 @@ func (s *S3Sink) writeObject(ctx context.Context, putObject *S3Object) error {
 // In returns the input channel of the S3Sink connector.
 func (s *S3Sink) In() chan<- any {
 	return s.in
+}
+
+// AwaitCompletion blocks until the S3Sink connector has processed all the received data.
+func (s *S3Sink) AwaitCompletion() {
+	<-s.done
 }

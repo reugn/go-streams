@@ -16,12 +16,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	timer := time.NewTimer(time.Minute)
-	go func() {
-		<-timer.C
-		cancelFunc()
-	}()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
 
 	queryPolicy := aero.NewQueryPolicy()
 	queryPolicy.SendKey = true // send user defined key

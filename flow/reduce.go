@@ -40,15 +40,17 @@ func NewReduce[T any](reduceFunction ReduceFunction[T]) *Reduce[T] {
 	return reduce
 }
 
-// Via streams data to a specified Flow and returns it.
+// Via asynchronously streams data to the given Flow and returns it.
 func (r *Reduce[T]) Via(flow streams.Flow) streams.Flow {
 	go r.transmit(flow)
 	return flow
 }
 
-// To streams data to a specified Sink.
+// To streams data to the given Sink and blocks until the Sink has completed
+// processing all data.
 func (r *Reduce[T]) To(sink streams.Sink) {
 	r.transmit(sink)
+	sink.AwaitCompletion()
 }
 
 // Out returns the output channel of the Reduce operator.

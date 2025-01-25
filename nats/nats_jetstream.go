@@ -71,7 +71,8 @@ type JetStreamSource struct {
 	config       *JetStreamSourceConfig
 	subscription *nats.Subscription
 	out          chan any
-	logger       *slog.Logger
+
+	logger *slog.Logger
 }
 
 var _ streams.Source = (*JetStreamSource)(nil)
@@ -84,7 +85,7 @@ func NewJetStreamSource(ctx context.Context, config *JetStreamSourceConfig,
 	subscription, err := config.JetStreamCtx.PullSubscribe(config.Subject,
 		config.ConsumerName, config.SubOpts...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to subscribe: %w", err)
 	}
 	if err := config.validate(); err != nil {
 		return nil, err
@@ -103,13 +104,14 @@ func NewJetStreamSource(ctx context.Context, config *JetStreamSourceConfig,
 		out:          make(chan any),
 		logger:       logger,
 	}
-	go jetStreamSource.init(ctx)
+
+	// asynchronously consume data and send it downstream
+	go jetStreamSource.process(ctx)
 
 	return jetStreamSource, nil
 }
 
-// init starts the stream processing loop.
-func (js *JetStreamSource) init(ctx context.Context) {
+func (js *JetStreamSource) process(ctx context.Context) {
 loop:
 	for {
 		select {
@@ -150,11 +152,12 @@ loop:
 		js.logger.Error("Failed to drain subscription",
 			slog.Any("error", err))
 	}
+
 	js.logger.Info("Closing connector")
 	close(js.out)
 }
 
-// Via streams data to a specified operator and returns it.
+// Via asynchronously streams data to the given Flow and returns it.
 func (js *JetStreamSource) Via(operator streams.Flow) streams.Flow {
 	flow.DoStream(js, operator)
 	return operator
@@ -198,6 +201,8 @@ func (config *JetStreamSinkConfig) validate() error {
 type JetStreamSink struct {
 	config *JetStreamSinkConfig
 	in     chan any
+
+	done   chan struct{}
 	logger *slog.Logger
 }
 
@@ -221,15 +226,19 @@ func NewJetStreamSink(config *JetStreamSinkConfig,
 	jetStreamSink := &JetStreamSink{
 		config: config,
 		in:     make(chan any),
+		done:   make(chan struct{}),
 		logger: logger,
 	}
-	go jetStreamSink.init()
+
+	// begin processing upstream data
+	go jetStreamSink.process()
 
 	return jetStreamSink, nil
 }
 
-// init starts the stream processing loop.
-func (js *JetStreamSink) init() {
+func (js *JetStreamSink) process() {
+	defer close(js.done) // signal data processing completion
+
 	for msg := range js.in {
 		var err error
 		switch message := msg.(type) {
@@ -261,10 +270,17 @@ func (js *JetStreamSink) init() {
 				slog.Any("error", err))
 		}
 	}
+
 	js.logger.Info("Closing connector")
 }
 
 // In returns the input channel of the JetStreamSink connector.
 func (js *JetStreamSink) In() chan<- any {
 	return js.in
+}
+
+// AwaitCompletion blocks until the JetStreamSink connector has completed
+// processing all the received data.
+func (js *JetStreamSink) AwaitCompletion() {
+	<-js.done
 }

@@ -20,7 +20,8 @@ type PubSubSource struct {
 	redisClient *redis.Client
 	channel     string
 	out         chan any
-	logger      *slog.Logger
+
+	logger *slog.Logger
 }
 
 var _ streams.Source = (*PubSubSource)(nil)
@@ -37,9 +38,8 @@ func NewPubSubSource(ctx context.Context, redisClient *redis.Client,
 
 	// wait for a confirmation that subscription is created before
 	// publishing anything
-	_, err := pubSub.Receive(ctx)
-	if err != nil {
-		return nil, err
+	if _, err := pubSub.Receive(ctx); err != nil {
+		return nil, fmt.Errorf("failed to receive: %w", err)
 	}
 
 	if logger == nil {
@@ -55,30 +55,34 @@ func NewPubSubSource(ctx context.Context, redisClient *redis.Client,
 		out:         make(chan any),
 		logger:      logger,
 	}
-	go source.init(ctx, pubSub.Channel())
+
+	// asynchronously consume data and send it downstream
+	go source.process(ctx, pubSub.Channel())
 
 	return source, nil
 }
 
-func (ps *PubSubSource) init(ctx context.Context, ch <-chan *redis.Message) {
+func (ps *PubSubSource) process(ctx context.Context, ch <-chan *redis.Message) {
 loop:
 	for {
 		select {
 		case <-ctx.Done():
 			break loop
 		// route incoming messages downstream
-		case msg := <-ch:
-			ps.out <- msg
+		case message := <-ch:
+			ps.out <- message
 		}
 	}
+
 	ps.logger.Info("Closing connector")
 	close(ps.out)
+
 	if err := ps.redisClient.Close(); err != nil {
 		ps.logger.Warn("Error in client.Close", slog.Any("error", err))
 	}
 }
 
-// Via streams data to a specified operator and returns it.
+// Via asynchronously streams data to the given Flow and returns it.
 func (ps *PubSubSource) Via(operator streams.Flow) streams.Flow {
 	flow.DoStream(ps, operator)
 	return operator
@@ -94,7 +98,9 @@ type PubSubSink struct {
 	redisClient *redis.Client
 	channel     string
 	in          chan any
-	logger      *slog.Logger
+
+	done   chan struct{}
+	logger *slog.Logger
 }
 
 var _ streams.Sink = (*PubSubSink)(nil)
@@ -116,14 +122,19 @@ func NewPubSubSink(ctx context.Context, redisClient *redis.Client,
 		redisClient: redisClient,
 		channel:     channel,
 		in:          make(chan any),
+		done:        make(chan struct{}),
 		logger:      logger,
 	}
-	go sink.init(ctx)
+
+	// begin processing upstream data
+	go sink.process(ctx)
 
 	return sink
 }
 
-func (ps *PubSubSink) init(ctx context.Context) {
+func (ps *PubSubSink) process(ctx context.Context) {
+	defer close(ps.done) // signal data processing completion
+
 	for msg := range ps.in {
 		switch message := msg.(type) {
 		case string:
@@ -135,6 +146,7 @@ func (ps *PubSubSink) init(ctx context.Context) {
 				slog.String("type", fmt.Sprintf("%T", message)))
 		}
 	}
+
 	ps.logger.Info("Closing connector")
 	if err := ps.redisClient.Close(); err != nil {
 		ps.logger.Warn("Error in client.Close", slog.Any("error", err))
@@ -144,4 +156,10 @@ func (ps *PubSubSink) init(ctx context.Context) {
 // In returns the input channel of the PubSubSink connector.
 func (ps *PubSubSink) In() chan<- any {
 	return ps.in
+}
+
+// AwaitCompletion blocks until the PubSubSink connector has completed
+// processing all the received data.
+func (ps *PubSubSink) AwaitCompletion() {
+	<-ps.done
 }

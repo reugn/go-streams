@@ -13,13 +13,8 @@ import (
 // Test producer: nc -u 127.0.0.1 3434
 // Test consumer: nc -u -l 3535
 func main() {
-	ctx, cancelFunc := context.WithCancel(context.Background())
-
-	timer := time.NewTimer(time.Minute)
-	go func() {
-		<-timer.C
-		cancelFunc()
-	}()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
 
 	source, err := ext.NewNetSource(ctx, ext.UDP, "127.0.0.1:3434")
 	if err != nil {

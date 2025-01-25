@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
@@ -17,9 +18,8 @@ func (msg *message) String() string {
 }
 
 func main() {
-
-	source := ext.NewChanSource(tickerChan(time.Second * 1))
-	mapFlow := flow.NewMap(addUTC, 1)
+	source := ext.NewChanSource(tickerChan(time.Second))
+	mapFlow := flow.NewMap(quote, 1)
 	sink := ext.NewStdoutSink()
 
 	source.
@@ -27,19 +27,18 @@ func main() {
 		To(sink)
 }
 
-var addUTC = func(msg *message) *message {
-	msg.Msg += "-UTC"
+func quote(msg *message) *message {
+	msg.Msg = fmt.Sprintf("%q", msg.Msg)
 	return msg
 }
 
-func tickerChan(repeat time.Duration) chan any {
-	ticker := time.NewTicker(repeat)
-	oc := ticker.C
-	nc := make(chan any)
+func tickerChan(interval time.Duration) chan any {
+	outChan := make(chan any)
 	go func() {
-		for range oc {
-			nc <- &message{strconv.FormatInt(time.Now().UnixNano(), 10)}
+		ticker := time.NewTicker(interval)
+		for t := range ticker.C {
+			outChan <- &message{Msg: strconv.FormatInt(t.UnixMilli(), 10)}
 		}
 	}()
-	return nc
+	return outChan
 }

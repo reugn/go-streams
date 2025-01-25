@@ -33,6 +33,7 @@ type StorageSource struct {
 	client *storage.Client
 	config *StorageSourceConfig
 	out    chan any
+
 	logger *slog.Logger
 }
 
@@ -119,7 +120,7 @@ func (s *StorageSource) readObjects(ctx context.Context) {
 	}
 }
 
-// Via streams data to a specified operator and returns it.
+// Via asynchronously streams data to the given Flow and returns it.
 func (s *StorageSource) Via(operator streams.Flow) streams.Flow {
 	flow.DoStream(s, operator)
 	return operator
@@ -154,6 +155,8 @@ type StorageSink struct {
 	client *storage.Client
 	config *StorageSinkConfig
 	in     chan any
+
+	done   chan struct{}
 	logger *slog.Logger
 }
 
@@ -180,6 +183,7 @@ func NewStorageSink(ctx context.Context, client *storage.Client,
 		client: client,
 		config: config,
 		in:     make(chan any, config.Parallelism),
+		done:   make(chan struct{}),
 		logger: logger,
 	}
 
@@ -192,6 +196,8 @@ func NewStorageSink(ctx context.Context, client *storage.Client,
 // writeObjects writes incoming stream data elements to GCP Storage using the
 // configured parallelism.
 func (s *StorageSink) writeObjects(ctx context.Context) {
+	defer close(s.done) // signal data processing completion
+
 	bucketHandle := s.client.Bucket(s.config.Bucket)
 	var wg sync.WaitGroup
 	for i := 0; i < s.config.Parallelism; i++ {
@@ -226,7 +232,13 @@ func (s *StorageSink) writeObjects(ctx context.Context) {
 // writeObject writes a single object to GCP Storage.
 func (s *StorageSink) writeObject(ctx context.Context, bucketHandle *storage.BucketHandle,
 	object *StorageObject) error {
-	defer object.Data.Close()
+	defer func() {
+		if err := object.Data.Close(); err != nil {
+			s.logger.Warn("Failed to close object",
+				slog.String("key", object.Key),
+				slog.Any("error", err))
+		}
+	}()
 
 	// writes will be retried on transient errors from the server
 	writer := bucketHandle.Object(object.Key).NewWriter(ctx)
@@ -246,4 +258,10 @@ func (s *StorageSink) writeObject(ctx context.Context, bucketHandle *storage.Buc
 // In returns the input channel of the StorageSink connector.
 func (s *StorageSink) In() chan<- any {
 	return s.in
+}
+
+// AwaitCompletion blocks until the StorageSink connector has completed
+// processing all the received data.
+func (s *StorageSink) AwaitCompletion() {
+	<-s.done
 }

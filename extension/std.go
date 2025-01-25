@@ -9,32 +9,40 @@ import (
 // StdoutSink represents a simple outbound connector that writes
 // streaming data to standard output.
 type StdoutSink struct {
-	in chan any
+	in   chan any
+	done chan struct{}
 }
 
 var _ streams.Sink = (*StdoutSink)(nil)
 
 // NewStdoutSink returns a new StdoutSink connector.
 func NewStdoutSink() *StdoutSink {
-	sink := &StdoutSink{
-		in: make(chan any),
+	stdoutSink := &StdoutSink{
+		in:   make(chan any),
+		done: make(chan struct{}),
 	}
-	sink.init()
 
-	return sink
+	// asynchronously process stream data
+	go stdoutSink.process()
+
+	return stdoutSink
 }
 
-func (stdout *StdoutSink) init() {
-	go func() {
-		for elem := range stdout.in {
-			fmt.Println(elem)
-		}
-	}()
+func (stdout *StdoutSink) process() {
+	defer close(stdout.done)
+	for elem := range stdout.in {
+		fmt.Println(elem)
+	}
 }
 
 // In returns the input channel of the StdoutSink connector.
 func (stdout *StdoutSink) In() chan<- any {
 	return stdout.in
+}
+
+// AwaitCompletion blocks until the StdoutSink has processed all received data.
+func (stdout *StdoutSink) AwaitCompletion() {
+	<-stdout.done
 }
 
 // IgnoreSink represents a simple outbound connector that discards
@@ -47,26 +55,31 @@ var _ streams.Sink = (*IgnoreSink)(nil)
 
 // NewIgnoreSink returns a new IgnoreSink connector.
 func NewIgnoreSink() *IgnoreSink {
-	sink := &IgnoreSink{
+	ignoreSink := &IgnoreSink{
 		in: make(chan any),
 	}
-	sink.init()
 
-	return sink
+	// asynchronously process stream data
+	go ignoreSink.process()
+
+	return ignoreSink
 }
 
-func (ignore *IgnoreSink) init() {
-	go func() {
-		for {
-			_, ok := <-ignore.in
-			if !ok {
-				break
-			}
+func (ignore *IgnoreSink) process() {
+	for {
+		_, ok := <-ignore.in
+		if !ok {
+			break
 		}
-	}()
+	}
 }
 
 // In returns the input channel of the IgnoreSink connector.
 func (ignore *IgnoreSink) In() chan<- any {
 	return ignore.in
+}
+
+// AwaitCompletion is a no-op for the IgnoreSink.
+func (ignore *IgnoreSink) AwaitCompletion() {
+	// no-op
 }

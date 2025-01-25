@@ -49,15 +49,17 @@ func NewFilter[T any](filterPredicate FilterPredicate[T], parallelism int) *Filt
 	return filter
 }
 
-// Via streams data to a specified Flow and returns it.
+// Via asynchronously streams data to the given Flow and returns it.
 func (f *Filter[T]) Via(flow streams.Flow) streams.Flow {
 	go f.transmit(flow)
 	return flow
 }
 
-// To streams data to a specified Sink.
+// To streams data to the given Sink and blocks until the Sink has completed
+// processing all data.
 func (f *Filter[T]) To(sink streams.Sink) {
 	f.transmit(sink)
+	sink.AwaitCompletion()
 }
 
 // Out returns the output channel of the Filter operator.

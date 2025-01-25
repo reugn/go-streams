@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"strings"
-	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	"github.com/reugn/go-streams"
@@ -40,14 +39,10 @@ func main() {
 		Via(toBlobStorageFlow()).
 		To(newBlobSink(ctx, client))
 
-	awaitFlowCompletion()
-
 	// read blob data to stdout
 	newBlobSource(ctx, client).
 		Via(readBlobStorageFlow()).
 		To(extension.NewStdoutSink())
-
-	awaitFlowCompletion()
 
 	// clean up the container
 	cleanUp(ctx, client)
@@ -126,10 +121,4 @@ func cleanUp(ctx context.Context, client *azblob.Client) {
 			return blob.Key
 		}, 1)).
 		To(extension.NewStdoutSink())
-
-	awaitFlowCompletion()
-}
-
-func awaitFlowCompletion() {
-	time.Sleep(500 * time.Millisecond)
 }

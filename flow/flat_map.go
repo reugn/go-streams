@@ -47,15 +47,17 @@ func NewFlatMap[T, R any](flatMapFunction FlatMapFunction[T, R], parallelism int
 	return flatMap
 }
 
-// Via streams data to a specified Flow and returns it.
+// Via asynchronously streams data to the given Flow and returns it.
 func (fm *FlatMap[T, R]) Via(flow streams.Flow) streams.Flow {
 	go fm.transmit(flow)
 	return flow
 }
 
-// To streams data to a specified Sink.
+// To streams data to the given Sink and blocks until the Sink has completed
+// processing all data.
 func (fm *FlatMap[T, R]) To(sink streams.Sink) {
 	fm.transmit(sink)
+	sink.AwaitCompletion()
 }
 
 // Out returns the output channel of the FlatMap operator.

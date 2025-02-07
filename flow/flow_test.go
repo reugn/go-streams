@@ -1,6 +1,7 @@
 package flow_test
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -290,4 +291,88 @@ func TestFlatten(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestZipWith(t *testing.T) {
+	tests := []struct {
+		name        string
+		outlets     []streams.Outlet
+		shouldPanic bool
+		expected    []string
+	}{
+		{
+			name:        "no-outlets",
+			shouldPanic: true,
+		},
+		{
+			name:        "one-outlet",
+			outlets:     []streams.Outlet{chanSource([]int{1})},
+			shouldPanic: true,
+		},
+		{
+			name:        "wrong-data-type",
+			outlets:     []streams.Outlet{chanSource([]string{"a"})},
+			shouldPanic: true,
+		},
+		{
+			name:     "empty-outlets",
+			outlets:  []streams.Outlet{chanSource([]int{}), chanSource([]int{})},
+			expected: []string{},
+		},
+		{
+			name: "equal-length",
+			outlets: []streams.Outlet{chanSource([]int{1, 2, 3}),
+				chanSource([]int{1, 2, 3}), chanSource([]int{1, 2, 3})},
+			expected: []string{"[1 1 1]", "[2 2 2]", "[3 3 3]"},
+		},
+		{
+			name:     "first-longer",
+			outlets:  []streams.Outlet{chanSource([]int{1, 2, 3}), chanSource([]int{1})},
+			expected: []string{"[1 1]", "[2 0]", "[3 0]"},
+		},
+		{
+			name: "second-longer",
+			outlets: []streams.Outlet{chanSource([]int{1, 2}),
+				chanSource([]int{1, 2, 3, 4, 5})},
+			expected: []string{"[1 1]", "[2 2]", "[0 3]", "[0 4]", "[0 5]"},
+		},
+		{
+			name: "mixed-length",
+			outlets: []streams.Outlet{chanSource([]int{1, 2}),
+				chanSource([]int{1, 2, 3, 4, 5}), chanSource([]int{1, 2, 3})},
+			expected: []string{"[1 1 1]", "[2 2 2]", "[0 3 3]", "[0 4 0]", "[0 5 0]"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.shouldPanic {
+				assert.Panics(t, func() {
+					flow.ZipWith(func(zipped []int) string {
+						return fmt.Sprintf("%v", zipped)
+					}, tt.outlets...)
+				})
+			} else {
+				sink := ext.NewChanSink(make(chan any, len(tt.expected)))
+				flow.ZipWith(func(zipped []int) string {
+					return fmt.Sprintf("%v", zipped)
+				}, tt.outlets...).To(sink)
+
+				actual := make([]string, 0, len(tt.expected))
+				for e := range sink.Out {
+					actual = append(actual, e.(string))
+				}
+
+				assert.Equal(t, tt.expected, actual)
+			}
+		})
+	}
+}
+
+func chanSource[T any](data []T) streams.Outlet {
+	ch := make(chan any, len(data))
+	for _, value := range data {
+		ch <- value
+	}
+	close(ch)
+	return ext.NewChanSource(ch)
 }

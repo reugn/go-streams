@@ -26,6 +26,7 @@ Implemented Flows ([flow](https://github.com/reugn/go-streams/tree/master/flow) 
 * FanOut
 * RoundRobin
 * Merge
+* ZipWith
 * Flatten
 * Batch
 * Throttler

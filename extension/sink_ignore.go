@@ -23,12 +23,7 @@ func NewIgnoreSink() *IgnoreSink {
 }
 
 func (ignore *IgnoreSink) process() {
-	for {
-		_, ok := <-ignore.in
-		if !ok {
-			break
-		}
-	}
+	drainChan(ignore.in)
 }
 
 // In returns the input channel of the IgnoreSink connector.

@@ -3,7 +3,7 @@ package extension
 import (
 	"bufio"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 
 	"github.com/reugn/go-streams"
@@ -11,19 +11,27 @@ import (
 )
 
 // FileSource represents an inbound connector that creates a stream of
-// elements from a file. The streaming element is a new line in the file.
+// elements from a file. Each line in the file is emitted as a string.
 type FileSource struct {
 	fileName string
 	in       chan any
+
+	opts options
 }
 
 var _ streams.Source = (*FileSource)(nil)
 
 // NewFileSource returns a new FileSource connector.
-func NewFileSource(fileName string) *FileSource {
+func NewFileSource(fileName string, opts ...Opt) *FileSource {
 	fileSource := &FileSource{
 		fileName: fileName,
 		in:       make(chan any),
+		opts:     makeDefaultOptions(),
+	}
+
+	// apply functional options to configure the source
+	for _, opt := range opts {
+		opt(&fileSource.opts)
 	}
 
 	// asynchronously send file data downstream
@@ -32,29 +40,43 @@ func NewFileSource(fileName string) *FileSource {
 	return fileSource
 }
 
+// process reads the file line by line and sends each line to the output channel.
 func (fs *FileSource) process() {
+	defer close(fs.in)
+
 	file, err := os.Open(fs.fileName)
 	if err != nil {
-		log.Fatalf("FileSource failed to open the file %s: %v", fs.fileName, err)
+		fs.opts.logger.Error("Failed to open file",
+			slog.String("name", fs.fileName),
+			slog.Any("error", err))
+		return
 	}
+
 	defer func() {
 		if err := file.Close(); err != nil {
-			log.Printf("FileSource failed to close the file %s: %v", fs.fileName, err)
+			fs.opts.logger.Error("Failed to close file",
+				slog.String("name", fs.fileName),
+				slog.Any("error", err))
 		}
 	}()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		// send the file line downstream
-		fs.in <- scanner.Text()
+		select {
+		case <-fs.opts.ctx.Done():
+			fs.opts.logger.Info("Context canceled",
+				slog.Any("error", fs.opts.ctx.Err()))
+			return
+		default:
+			// send the file line downstream
+			fs.in <- scanner.Text()
+		}
 	}
 
 	// check for errors that occurred during scanning
 	if err := scanner.Err(); err != nil {
-		log.Printf("FileSource scanner error: %v", err)
+		fs.opts.logger.Error("Scanner error", slog.Any("error", err))
 	}
-
-	close(fs.in)
 }
 
 // Via asynchronously streams data to the given Flow and returns it.
@@ -74,16 +96,24 @@ type FileSink struct {
 	fileName string
 	in       chan any
 	done     chan struct{}
+
+	opts options
 }
 
 var _ streams.Sink = (*FileSink)(nil)
 
 // NewFileSink returns a new FileSink connector.
-func NewFileSink(fileName string) *FileSink {
+func NewFileSink(fileName string, opts ...Opt) *FileSink {
 	fileSink := &FileSink{
 		fileName: fileName,
 		in:       make(chan any),
 		done:     make(chan struct{}),
+		opts:     makeDefaultOptions(),
+	}
+
+	// apply functional options to configure the sink
+	for _, opt := range opts {
+		opt(&fileSink.opts)
 	}
 
 	// asynchronously process stream data
@@ -92,16 +122,30 @@ func NewFileSink(fileName string) *FileSink {
 	return fileSink
 }
 
+// process reads data from the input channel and writes it to the file.
 func (fs *FileSink) process() {
 	defer close(fs.done)
 
 	file, err := os.Create(fs.fileName)
 	if err != nil {
-		log.Fatalf("FileSink failed to open the file %s: %v", fs.fileName, err)
+		fs.opts.logger.Error("Failed to open file",
+			slog.String("name", fs.fileName),
+			slog.Any("error", err))
+
+		// cancel the source context
+		fs.opts.ctxCancel()
+
+		// discard buffered input elements
+		drainChan(fs.in)
+
+		return
 	}
+
 	defer func() {
 		if err := file.Close(); err != nil {
-			log.Printf("FileSink failed to close the file %s: %v", fs.fileName, err)
+			fs.opts.logger.Error("Failed to close file",
+				slog.String("name", fs.fileName),
+				slog.Any("error", err))
 		}
 	}()
 
@@ -110,17 +154,33 @@ func (fs *FileSink) process() {
 		switch v := element.(type) {
 		case string:
 			stringElement = v
+		case []byte:
+			stringElement = string(v)
 		case fmt.Stringer:
 			stringElement = v.String()
 		default:
-			log.Printf("FileSink received an unsupported type %T, discarding", v)
+			fs.opts.logger.Warn("Discarded stream element",
+				slog.String("type", fmt.Sprintf("%T", v)))
 			continue
 		}
 
-		// Write the processed string element to the file. If an error occurs,
-		// terminate the sink.
-		if _, err := file.WriteString(stringElement); err != nil {
-			log.Fatalf("FileSink failed to write to the file %s: %v", fs.fileName, err)
+		// Write the processed string element to the file. Use the specified
+		// retry function to retry if an error occurs.
+		// If failed to write, cancel the source context, drain the input
+		// channel and terminate the stream processing.
+		if err := fs.opts.retryFunc(fs.opts.ctx, func() error {
+			_, err := file.WriteString(stringElement)
+			return err
+		}); err != nil {
+			fs.opts.logger.Error("Failed to write to file",
+				slog.String("name", fs.fileName),
+				slog.Any("error", err))
+
+			// cancel the source context
+			fs.opts.ctxCancel()
+
+			// discard buffered input elements
+			drainChan(fs.in)
 		}
 	}
 }

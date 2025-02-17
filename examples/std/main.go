@@ -10,11 +10,11 @@ import (
 )
 
 type message struct {
-	Msg string
+	msg string
 }
 
 func (msg *message) String() string {
-	return msg.Msg
+	return msg.msg
 }
 
 func main() {
@@ -28,7 +28,7 @@ func main() {
 }
 
 func quote(msg *message) *message {
-	msg.Msg = fmt.Sprintf("%q", msg.Msg)
+	msg.msg = fmt.Sprintf("%q", msg.msg)
 	return msg
 }
 
@@ -37,7 +37,7 @@ func tickerChan(interval time.Duration) chan any {
 	go func() {
 		ticker := time.NewTicker(interval)
 		for t := range ticker.C {
-			outChan <- &message{Msg: strconv.FormatInt(t.UnixMilli(), 10)}
+			outChan <- &message{msg: strconv.FormatInt(t.UnixMilli(), 10)}
 		}
 	}()
 	return outChan

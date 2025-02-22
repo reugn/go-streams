@@ -6,7 +6,8 @@ Open a pull request to propose changes.
 
 ## Prerequisites
 
-Go `1.18` is the minimum requirement for this project; refer to the [Download and Install](http://golang.org/doc/install) page for setup.
+Go `1.21` is the minimum requirement for the core module;
+see the [Download and Install](http://golang.org/doc/install) page for setup instructions.
 
 ## Contribution flow
 
@@ -21,5 +22,5 @@ Go `1.18` is the minimum requirement for this project; refer to the [Download an
 
 ## Code style
 
-* Refer to the [Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments) page for style guidelines
-* Run [golangci-lint](https://golangci-lint.run/) to analyze source code
+* Refer to the [Code Review Comments](https://go.dev/wiki/CodeReviewComments) page for style guidelines
+* Use [golangci-lint](https://golangci-lint.run) for static analysis of the source code

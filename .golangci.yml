@@ -6,6 +6,8 @@ linters:
   enable:
     - dupl
     - errcheck
+    - errname
+    - errorlint
     - funlen
     - gci
     - goconst
@@ -18,9 +20,11 @@ linters:
     - govet
     - ineffassign
     - lll
+    - makezero
     - misspell
     - nolintlint
     - prealloc
+    - reassign
     - revive
     - staticcheck
     - stylecheck
@@ -30,6 +34,7 @@ linters:
     - unconvert
     - unparam
     - unused
+    - usetesting
 
 linters-settings:
   gocritic:

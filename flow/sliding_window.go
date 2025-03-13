@@ -141,9 +141,6 @@ func (sw *SlidingWindow[T]) receive() {
 
 // emit captures and emits a new window every sw.slidingInterval.
 func (sw *SlidingWindow[T]) emit() {
-	// wait for the sliding window to start
-	time.Sleep(sw.windowSize - sw.slidingInterval)
-
 	lastTick := time.Now()
 	ticker := time.NewTicker(sw.slidingInterval)
 	defer ticker.Stop()

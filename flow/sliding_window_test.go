@@ -36,14 +36,16 @@ func TestSlidingWindow(t *testing.T) {
 	outputValues := readSlice[[]string](sink.Out)
 	fmt.Println(outputValues)
 
-	assert.Equal(t, 6, len(outputValues)) // [[a b c] [b c d] [c d e] [d e f g] [f g] [g]]
+	assert.Equal(t, 8, len(outputValues)) // [[a] [a b] [a b c] [b c d e] [d e f] [e f g] [f g] [g]]
 
-	assert.Equal(t, []string{"a", "b", "c"}, outputValues[0])
-	assert.Equal(t, []string{"b", "c", "d"}, outputValues[1])
+	assert.Equal(t, []string{"a"}, outputValues[0])
+	assert.Equal(t, []string{"a", "b"}, outputValues[1])
+	assert.Equal(t, []string{"a", "b", "c"}, outputValues[2])
+	assert.Equal(t, []string{"b", "c", "d", "e"}, outputValues[3])
 	// assert.Equal(t, []string{"c", "d", "e"}, outputValues[2])
 	// assert.Equal(t, []string{"d", "e", "f", "g"}, outputValues[3])
-	assert.Equal(t, []string{"f", "g"}, outputValues[4])
-	assert.Equal(t, []string{"g"}, outputValues[5])
+	assert.Equal(t, []string{"f", "g"}, outputValues[6])
+	assert.Equal(t, []string{"g"}, outputValues[7])
 }
 
 type element struct {
@@ -94,14 +96,16 @@ func TestSlidingWindow_WithExtractor(t *testing.T) {
 	}
 	fmt.Println(outputValues)
 
-	assert.Equal(t, 6, len(outputValues)) // [[a b c d] [c d] [e] [e f] [f g] [i h g]]
+	assert.Equal(t, 8, len(outputValues)) // [[a b] [a b c d] [b c d] [d e] [e f] [e f g] [f g] [i h g]]
 
-	assert.Equal(t, []string{"a", "b", "c", "d"}, outputValues[0])
-	assert.Equal(t, []string{"c", "d"}, outputValues[1])
-	assert.Equal(t, []string{"e"}, outputValues[2])
-	assert.Equal(t, []string{"e", "f"}, outputValues[3])
-	assert.Equal(t, []string{"f", "g"}, outputValues[4])
-	assert.Equal(t, []string{"i", "h", "g"}, outputValues[5])
+	assert.Equal(t, []string{"a", "b"}, outputValues[0])
+	assert.Equal(t, []string{"a", "b", "c", "d"}, outputValues[1])
+	assert.Equal(t, []string{"b", "c", "d"}, outputValues[2])
+	assert.Equal(t, []string{"d", "e"}, outputValues[3])
+	assert.Equal(t, []string{"e", "f"}, outputValues[4])
+	assert.Equal(t, []string{"e", "f", "g"}, outputValues[5])
+	assert.Equal(t, []string{"f", "g"}, outputValues[6])
+	assert.Equal(t, []string{"i", "h", "g"}, outputValues[7])
 }
 
 func elementValues(elements []element) []string {
@@ -156,14 +160,16 @@ func TestSlidingWindow_WithExtractorPtr(t *testing.T) {
 	}
 	fmt.Println(outputValues)
 
-	assert.Equal(t, 6, len(outputValues)) // [[a b c d] [c d] [e] [e f] [f g] [i h g]]
+	assert.Equal(t, 8, len(outputValues)) // [[a b] [a b c d] [b c d] [d e] [e f] [e f g] [f g] [i h g]]
 
-	assert.Equal(t, []string{"a", "b", "c", "d"}, outputValues[0])
-	assert.Equal(t, []string{"c", "d"}, outputValues[1])
-	assert.Equal(t, []string{"e"}, outputValues[2])
-	assert.Equal(t, []string{"e", "f"}, outputValues[3])
-	assert.Equal(t, []string{"f", "g"}, outputValues[4])
-	assert.Equal(t, []string{"i", "h", "g"}, outputValues[5])
+	assert.Equal(t, []string{"a", "b"}, outputValues[0])
+	assert.Equal(t, []string{"a", "b", "c", "d"}, outputValues[1])
+	assert.Equal(t, []string{"b", "c", "d"}, outputValues[2])
+	assert.Equal(t, []string{"d", "e"}, outputValues[3])
+	assert.Equal(t, []string{"e", "f"}, outputValues[4])
+	assert.Equal(t, []string{"e", "f", "g"}, outputValues[5])
+	assert.Equal(t, []string{"f", "g"}, outputValues[6])
+	assert.Equal(t, []string{"i", "h", "g"}, outputValues[7])
 }
 
 func elementValuesPtr(elements []*element) []string {

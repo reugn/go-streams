@@ -71,7 +71,7 @@ func (m *Fold[T, R]) transmit(inlet streams.Inlet) {
 }
 
 func (m *Fold[T, R]) doStream() {
-	var lastFolded R = m.init
+	var lastFolded = m.init
 	for element := range m.in {
 		lastFolded = m.foldFunction(element.(T), lastFolded)
 		m.out <- lastFolded

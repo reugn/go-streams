@@ -14,7 +14,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/nats-io/nats.go v1.38.0
 	github.com/nats-io/stan.go v0.10.4
-	github.com/redis/go-redis/v9 v9.7.0
+	github.com/redis/go-redis/v9 v9.7.3
 	github.com/reugn/go-streams v0.11.0
 	github.com/reugn/go-streams/aerospike v0.0.0
 	github.com/reugn/go-streams/aws v0.0.0

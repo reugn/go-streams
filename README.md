@@ -30,7 +30,10 @@ processing operations. These building blocks can be used to transform and manipu
 - **Map:** Transforms each element in the stream.
 - **FlatMap:** Transforms each element into a stream of slices of zero or more elements.
 - **Filter:** Selects elements from the stream based on a condition.
+- **Fold:** Combines elements of the stream with the last folded value and emits the new value.
+  Requires an initial value.
 - **Reduce:** Combines elements of the stream with the last reduced value and emits the new value.
+  Does not require an initial value.
 - **PassThrough:** Passes elements through unchanged.
 - **Split<sup>1</sup>:** Divides the stream into two streams based on a boolean predicate.
 - **FanOut<sup>1</sup>:** Duplicates the stream to multiple outputs for parallel processing.

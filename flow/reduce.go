@@ -7,7 +7,7 @@ import (
 // ReduceFunction combines the current element with the last reduced value.
 type ReduceFunction[T any] func(T, T) T
 
-// Reduce represents a “rolling” reduce on a data stream.
+// Reduce implements a “rolling” reduce transformation on a data stream.
 // Combines the current element with the last reduced value and emits the new value.
 //
 // in  -- 1 -- 2 ---- 3 -- 4 ------ 5 --
@@ -19,7 +19,6 @@ type Reduce[T any] struct {
 	reduceFunction ReduceFunction[T]
 	in             chan any
 	out            chan any
-	lastReduced    any
 }
 
 // Verify Reduce satisfies the Flow interface.
@@ -71,15 +70,14 @@ func (r *Reduce[T]) transmit(inlet streams.Inlet) {
 }
 
 func (r *Reduce[T]) doStream() {
+	var lastReduced any
 	for element := range r.in {
-		if r.lastReduced == nil {
-			r.lastReduced = element
+		if lastReduced == nil {
+			lastReduced = element
 		} else {
-			r.lastReduced = r.reduceFunction(
-				r.lastReduced.(T),
-				element.(T))
+			lastReduced = r.reduceFunction(lastReduced.(T), element.(T))
 		}
-		r.out <- r.lastReduced
+		r.out <- lastReduced
 	}
 	close(r.out)
 }

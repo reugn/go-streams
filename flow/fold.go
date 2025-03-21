@@ -7,7 +7,9 @@ import (
 // FoldFunction represents a Fold transformation function.
 type FoldFunction[T, R any] func(T, R) R
 
-// Fold takes one element and produces one element.
+// Fold implements a "rolling" fold transformation on a data stream with an
+// initial value. Combines the current element with the last folded value and
+// emits the new value.
 //
 // in  -- 1 -- 2 ---- 3 -- 4 ------ 5 --
 //
@@ -27,7 +29,8 @@ var _ streams.Flow = (*Fold[any, any])(nil)
 // NewFold returns a new Fold operator.
 // T specifies the incoming element type, and the outgoing element type is R.
 //
-// FoldFunction is the Fold transformation function.
+// init is the initial value for the folding process.
+// foldFunction is the function that performs the fold transformation.
 func NewFold[T, R any](init R, foldFunction FoldFunction[T, R]) *Fold[T, R] {
 	foldFlow := &Fold[T, R]{
 		init:         init,
@@ -71,7 +74,7 @@ func (m *Fold[T, R]) transmit(inlet streams.Inlet) {
 }
 
 func (m *Fold[T, R]) doStream() {
-	var lastFolded = m.init
+	lastFolded := m.init
 	for element := range m.in {
 		lastFolded = m.foldFunction(element.(T), lastFolded)
 		m.out <- lastFolded

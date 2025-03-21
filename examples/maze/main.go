@@ -1,6 +1,8 @@
 package main
 
 import (
+	"math/rand"
+	"strings"
 	"time"
 
 	ext "github.com/reugn/go-streams/extension"
@@ -10,56 +12,21 @@ import (
 type Move int
 
 const (
-	LEFT Move = iota
-	RIGHT
+	left Move = iota
+	right
 )
 
-// Simulate waling through a maze
-var MAZE = "------"
-var MOVES = []Move{RIGHT, RIGHT, LEFT, RIGHT, LEFT, LEFT, RIGHT, RIGHT, RIGHT, LEFT}
+const (
+	mazeLength  = 10
+	movesNumber = 20
+)
 
-func move(m Move, pos int) int {
-	if m == RIGHT {
-		return pos + 1
-	}
+var maze = strings.Repeat("-", mazeLength)
 
-	return pos - 1
-}
-
-func format(pos int) string {
-	// Mark the position with an X
-	positionInMaze := MAZE[:pos] + "X" + MAZE[pos+1:]
-	return positionInMaze
-}
-
-// Make a move every interval
-func moveChan(interval time.Duration) chan any {
-	// Create a sequence of moves
-	outChan := make(chan any)
-
-	go func() {
-		ticker := time.NewTicker(interval)
-		// Start at position 0
-		pos := 0
-		for _ = range ticker.C {
-			// Send the next move
-			outChan <- MOVES[pos]
-			// Move to the next position
-			pos = (pos + 1)
-			if pos >= len(MOVES) {
-				// Stop
-				close(outChan)
-				break
-			}
-		}
-	}()
-
-	return outChan
-}
-
+// Simulate walking through a maze.
 func main() {
-	source := ext.NewChanSource(moveChan(time.Second))
-	positionFlow := flow.NewFold(0, move)
+	source := ext.NewChanSource(moveChan(500*time.Millisecond, movesNumber))
+	positionFlow := flow.NewFold(mazeLength/2, move)
 	formatFlow := flow.NewMap(format, 1)
 	sink := ext.NewStdoutSink()
 
@@ -67,4 +34,54 @@ func main() {
 		Via(positionFlow).
 		Via(formatFlow).
 		To(sink)
+}
+
+// move calculates the next position given the current position and a Move.
+// If the move is invalid (out of bounds), the original position is returned.
+func move(m Move, pos int) int {
+	switch {
+	case m == left && pos > 0:
+		return pos - 1
+	case m == right && pos < len(maze)-1:
+		return pos + 1
+	default:
+		return pos
+	}
+}
+
+// format marks the position with an X.
+func format(pos int) string {
+	return maze[:pos] + "X" + maze[pos+1:]
+}
+
+// moveChan creates a channel that emits n random moves at the specified interval.
+func moveChan(interval time.Duration, n int) chan any {
+	outChan := make(chan any)
+
+	go func() {
+		defer close(outChan)
+		// generate a sequence of moves
+		moves := generateRandomMoves(n)
+		for i := 0; i < n; i++ {
+			time.Sleep(interval)
+			// send the next move
+			outChan <- moves[i]
+		}
+	}()
+
+	return outChan
+}
+
+// generateRandomMoves creates a random sequence of moves with length n.
+func generateRandomMoves(n int) []Move {
+	if n <= 0 {
+		return []Move{}
+	}
+
+	moves := make([]Move, n)
+	for i := 0; i < n; i++ {
+		moves[i] = Move(rand.Intn(2)) //nolint:gosec
+	}
+
+	return moves
 }

@@ -89,6 +89,12 @@ func TestThrottler_NonPositiveBufferSize(t *testing.T) {
 	})
 }
 
+func TestThrottler_UnsupportedThrottleMode(t *testing.T) {
+	assert.Panics(t, func() {
+		flow.NewThrottler(2, time.Second, 1, flow.ThrottleMode(3))
+	})
+}
+
 func writeValues(in chan any) {
 	inputValues := []string{"a", "b", "c", "d", "e", "f", "g"}
 	ingestSlice(inputValues, in)

@@ -62,7 +62,7 @@ var _ streams.Flow = (*SlidingWindow[any])(nil)
 //
 // NewSlidingWindow panics if slidingInterval is larger than windowSize.
 func NewSlidingWindow[T any](windowSize, slidingInterval time.Duration) *SlidingWindow[T] {
-	return NewSlidingWindowWithOpts[T](windowSize, slidingInterval, SlidingWindowOpts[T]{})
+	return NewSlidingWindowWithOpts(windowSize, slidingInterval, SlidingWindowOpts[T]{})
 }
 
 // NewSlidingWindowWithOpts returns a new SlidingWindow operator configured with the
@@ -92,13 +92,14 @@ func NewSlidingWindowWithOpts[T any](
 
 	// start buffering incoming stream elements
 	go slidingWindow.receive()
+	// capture and emit a new window every sliding interval
+	go slidingWindow.emit()
 
 	return slidingWindow
 }
 
 // Via asynchronously streams data to the given Flow and returns it.
 func (sw *SlidingWindow[T]) Via(flow streams.Flow) streams.Flow {
-	go sw.emit()
 	go sw.transmit(flow)
 	return flow
 }
@@ -106,7 +107,6 @@ func (sw *SlidingWindow[T]) Via(flow streams.Flow) streams.Flow {
 // To streams data to the given Sink and blocks until the Sink has completed
 // processing all data.
 func (sw *SlidingWindow[T]) To(sink streams.Sink) {
-	go sw.emit()
 	sw.transmit(sink)
 	sink.AwaitCompletion()
 }
@@ -157,13 +157,14 @@ func (sw *SlidingWindow[T]) receive() {
 
 // emit captures and emits a new window every sw.slidingInterval.
 func (sw *SlidingWindow[T]) emit() {
+	defer close(sw.out)
+
 	if !sw.opts.EmitPartialWindow {
 		timer := time.NewTimer(sw.windowSize - sw.slidingInterval)
 		select {
 		case <-timer.C:
 		case <-sw.done:
 			timer.Stop()
-			close(sw.out)
 			return
 		}
 	}
@@ -179,7 +180,6 @@ func (sw *SlidingWindow[T]) emit() {
 
 		case <-sw.done:
 			sw.dispatchWindow(lastTick.Add(sw.slidingInterval))
-			close(sw.out)
 			return
 		}
 	}
@@ -189,6 +189,8 @@ func (sw *SlidingWindow[T]) emit() {
 // window to the output channel and moving the window to the next position.
 func (sw *SlidingWindow[T]) dispatchWindow(tick time.Time) {
 	sw.mu.Lock()
+	defer sw.mu.Unlock()
+
 	// sort elements in the queue by their time
 	sort.Slice(sw.queue, func(i, j int) bool {
 		return sw.queue[i].eventTime.Before(sw.queue[j].eventTime)
@@ -196,7 +198,6 @@ func (sw *SlidingWindow[T]) dispatchWindow(tick time.Time) {
 
 	// extract current window elements
 	windowElements := sw.extractWindowElements(tick)
-	sw.mu.Unlock()
 
 	// send elements downstream if the current window is not empty
 	if len(windowElements) > 0 {
@@ -213,6 +214,7 @@ func (sw *SlidingWindow[T]) extractWindowElements(tick time.Time) []T {
 
 	elements := make([]T, 0, len(sw.queue))
 	var remainingElements []timedElement[T]
+queueLoop:
 	for i, element := range sw.queue {
 		if remainingElements == nil && element.eventTime.After(nextWindowStartTime) {
 			// copy remaining elements
@@ -223,7 +225,7 @@ func (sw *SlidingWindow[T]) extractWindowElements(tick time.Time) []T {
 		case element.eventTime.Before(tick):
 			elements = append(elements, element.element)
 		default:
-			break // we can break since the queue is ordered
+			break queueLoop // we can break since the queue is ordered
 		}
 	}
 

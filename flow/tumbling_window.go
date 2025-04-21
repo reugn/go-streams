@@ -13,10 +13,11 @@ import (
 type TumblingWindow[T any] struct {
 	mu         sync.Mutex
 	windowSize time.Duration
-	in         chan any
-	out        chan any
-	done       chan struct{}
 	buffer     []T
+
+	in   chan any
+	out  chan any
+	done chan struct{}
 }
 
 // Verify TumblingWindow satisfies the Flow interface.
@@ -33,7 +34,10 @@ func NewTumblingWindow[T any](size time.Duration) *TumblingWindow[T] {
 		out:        make(chan any),
 		done:       make(chan struct{}),
 	}
+
+	// start buffering incoming stream elements
 	go tumblingWindow.receive()
+	// capture and emit a new window based on the fixed time interval
 	go tumblingWindow.emit()
 
 	return tumblingWindow
@@ -102,9 +106,10 @@ func (tw *TumblingWindow[T]) emit() {
 // It sends the slice of elements to the output channel if the window is not empty.
 func (tw *TumblingWindow[T]) dispatchWindow() {
 	tw.mu.Lock()
+	defer tw.mu.Unlock()
+
 	windowElements := tw.buffer
 	tw.buffer = nil
-	tw.mu.Unlock()
 
 	// send elements if the window is not empty
 	if len(windowElements) > 0 {

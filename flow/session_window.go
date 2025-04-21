@@ -13,11 +13,12 @@ import (
 type SessionWindow[T any] struct {
 	mu            sync.Mutex
 	inactivityGap time.Duration
-	in            chan any
-	out           chan any
-	reset         chan struct{}
-	done          chan struct{}
 	buffer        []T
+
+	in    chan any
+	out   chan any
+	reset chan struct{}
+	done  chan struct{}
 }
 
 // Verify SessionWindow satisfies the Flow interface.
@@ -35,8 +36,11 @@ func NewSessionWindow[T any](inactivityGap time.Duration) *SessionWindow[T] {
 		reset:         make(chan struct{}),
 		done:          make(chan struct{}),
 	}
-	go sessionWindow.emit()
+
+	// start buffering incoming stream elements
 	go sessionWindow.receive()
+	// emit a session window based on the gap of inactivity
+	go sessionWindow.emit()
 
 	return sessionWindow
 }
@@ -124,9 +128,10 @@ func (sw *SessionWindow[T]) emit() {
 // It sends the slice of elements to the output channel if the window is not empty.
 func (sw *SessionWindow[T]) dispatchWindow() {
 	sw.mu.Lock()
+	defer sw.mu.Unlock()
+
 	windowElements := sw.buffer
 	sw.buffer = nil
-	sw.mu.Unlock()
 
 	// send elements if the window is not empty
 	if len(windowElements) > 0 {

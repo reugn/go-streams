@@ -22,6 +22,13 @@ type SlidingWindowOpts[T any] struct {
 	// full window duration has elapsed. If false, the first window will only be
 	// emitted after the full window duration.
 	EmitPartialWindow bool
+	// AllowedLateness provides a grace period after the window closes, during which
+	// late data is still processed. This prevents data loss and improves the
+	// completeness of results. If AllowedLateness is not specified, records belonging
+	// to a closed window that arrive late will be discarded.
+	//
+	// The specified value must be no larger than the window sliding interval.
+	AllowedLateness time.Duration
 }
 
 // timedElement stores an incoming element along with its event time.
@@ -40,7 +47,9 @@ type SlidingWindow[T any] struct {
 	mu              sync.Mutex
 	windowSize      time.Duration
 	slidingInterval time.Duration
-	queue           []timedElement[T]
+
+	lowerBoundary time.Time
+	queue         []timedElement[T]
 
 	in   chan any
 	out  chan any
@@ -57,8 +66,8 @@ var _ streams.Flow = (*SlidingWindow[any])(nil)
 // respective operation.
 // T specifies the incoming element type, and the outgoing element type is []T.
 //
-// windowSize is the Duration of generated windows.
-// slidingInterval is the sliding interval of generated windows.
+// windowSize is the duration of each full window.
+// slidingInterval is the interval at which new windows are created and emitted.
 //
 // NewSlidingWindow panics if slidingInterval is larger than windowSize.
 func NewSlidingWindow[T any](windowSize, slidingInterval time.Duration) *SlidingWindow[T] {
@@ -69,16 +78,19 @@ func NewSlidingWindow[T any](windowSize, slidingInterval time.Duration) *Sliding
 // provided configuration options.
 // T specifies the incoming element type, and the outgoing element type is []T.
 //
-// windowSize is the Duration of generated windows.
-// slidingInterval is the sliding interval of generated windows.
+// windowSize is the duration of each full window.
+// slidingInterval is the interval at which new windows are created and emitted.
 // opts are the sliding window configuration options.
 //
-// NewSlidingWindowWithOpts panics if slidingInterval is larger than windowSize.
+// NewSlidingWindowWithOpts panics if slidingInterval is larger than windowSize,
+// or the allowed lateness is larger than slidingInterval.
 func NewSlidingWindowWithOpts[T any](
 	windowSize, slidingInterval time.Duration, opts SlidingWindowOpts[T]) *SlidingWindow[T] {
-
-	if windowSize < slidingInterval {
+	if slidingInterval > windowSize {
 		panic("sliding interval is larger than window size")
+	}
+	if opts.AllowedLateness > slidingInterval {
+		panic("allowed lateness is larger than sliding interval")
 	}
 
 	slidingWindow := &SlidingWindow[T]{
@@ -90,10 +102,8 @@ func NewSlidingWindowWithOpts[T any](
 		opts:            opts,
 	}
 
-	// start buffering incoming stream elements
-	go slidingWindow.receive()
-	// capture and emit a new window every sliding interval
-	go slidingWindow.emit()
+	// start processing stream elements
+	go slidingWindow.stream()
 
 	return slidingWindow
 }
@@ -138,48 +148,98 @@ func (sw *SlidingWindow[T]) eventTime(element T) time.Time {
 	return sw.opts.EventTimeExtractor(element)
 }
 
-// receive buffers the incoming elements by pushing them into the queue,
+// stream buffers the incoming elements by pushing them into the internal queue,
 // wrapping the original item into a timedElement along with its event time.
-func (sw *SlidingWindow[T]) receive() {
-	for element := range sw.in {
-		eventTime := sw.eventTime(element.(T))
+// It starts a goroutine to capture and emit a new window every sliding interval
+// after receiving the first element.
+func (sw *SlidingWindow[T]) stream() {
+	processElement := func(element T) {
+		eventTime := sw.eventTime(element)
 
 		sw.mu.Lock()
+		defer sw.mu.Unlock()
+
+		// skip events older than the window lower boundary
+		if eventTime.Before(sw.lowerBoundary) {
+			return
+		}
+
+		// add the element to the internal queue
 		timed := timedElement[T]{
-			element:   element.(T),
+			element:   element,
 			eventTime: eventTime,
 		}
 		sw.queue = append(sw.queue, timed)
-		sw.mu.Unlock()
 	}
+
+	// Read the first element from the input channel. Its event time will determine
+	// the lower boundary for the first sliding window.
+	element, ok := <-sw.in
+	if !ok {
+		// The input channel has been closed by the upstream operator, indicating
+		// that no more data will be received. Signal the completion of the sliding
+		// window by closing the output channel and return.
+		close(sw.out)
+		return
+	}
+
+	// calculate the window start time and process the element
+	eventTime := sw.eventTime(element.(T))
+	var delta time.Duration
+	sw.lowerBoundary, delta = sw.calculateWindowStart(eventTime)
+	processElement(element.(T))
+
+	// start a goroutine to capture and emit a new window every
+	// sliding interval
+	go sw.emit(delta)
+
+	// process incoming stream elements
+	for element := range sw.in {
+		processElement(element.(T))
+	}
+
+	// signal upstream completion
 	close(sw.done)
 }
 
-// emit captures and emits a new window every sw.slidingInterval.
-func (sw *SlidingWindow[T]) emit() {
+// emit periodically captures and emits completed sliding windows every
+// sw.slidingInterval.
+// The emission process begins after an initial delay calculated based on
+// AllowedLateness, EmitPartialWindow, and the time difference between the
+// start of the first window and the current time (delta).
+func (sw *SlidingWindow[T]) emit(delta time.Duration) {
 	defer close(sw.out)
 
+	// calculate the initial delay
+	initialDelay := sw.opts.AllowedLateness
 	if !sw.opts.EmitPartialWindow {
-		timer := time.NewTimer(sw.windowSize - sw.slidingInterval)
-		select {
-		case <-timer.C:
-		case <-sw.done:
-			timer.Stop()
-			return
-		}
+		initialDelay += sw.windowSize - sw.slidingInterval - delta
 	}
 
-	lastTick := time.Now()
+	// Wait for the first window iteration, using a timer.
+	// If sw.done is signaled before the timer expires, the function returns.
+	timer := time.NewTimer(initialDelay)
+	select {
+	case <-timer.C:
+	case <-sw.done:
+		timer.Stop()
+		return
+	}
+
+	// create a ticker for periodic emission of sliding windows
 	ticker := time.NewTicker(sw.slidingInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case lastTick = <-ticker.C:
-			sw.dispatchWindow(lastTick)
+		case <-ticker.C:
+			// dispatch the current window
+			sw.dispatchWindow()
 
 		case <-sw.done:
-			sw.dispatchWindow(lastTick.Add(sw.slidingInterval))
+			// on shutdown, dispatch one final window to ensure all remaining
+			// data is processed and return
+			sw.dispatchWindow()
 			return
 		}
 	}
@@ -187,7 +247,7 @@ func (sw *SlidingWindow[T]) emit() {
 
 // dispatchWindow is responsible for sending the elements in the current
 // window to the output channel and moving the window to the next position.
-func (sw *SlidingWindow[T]) dispatchWindow(tick time.Time) {
+func (sw *SlidingWindow[T]) dispatchWindow() {
 	sw.mu.Lock()
 	defer sw.mu.Unlock()
 
@@ -197,7 +257,7 @@ func (sw *SlidingWindow[T]) dispatchWindow(tick time.Time) {
 	})
 
 	// extract current window elements
-	windowElements := sw.extractWindowElements(tick)
+	windowElements := sw.extractWindowElements()
 
 	// send elements downstream if the current window is not empty
 	if len(windowElements) > 0 {
@@ -208,21 +268,26 @@ func (sw *SlidingWindow[T]) dispatchWindow(tick time.Time) {
 // extractWindowElements extracts and returns elements from the sliding window that
 // fall within the current window. Elements newer than tick will not be included.
 // The sliding window queue is updated to remove previous interval elements.
-func (sw *SlidingWindow[T]) extractWindowElements(tick time.Time) []T {
-	// calculate the next window start time
-	nextWindowStartTime := tick.Add(-sw.windowSize).Add(sw.slidingInterval)
+func (sw *SlidingWindow[T]) extractWindowElements() []T {
+	// Calculate the upper boundary of the current sliding window.
+	// Elements with the event time less than or equal to this boundary will be
+	// included.
+	upperBoundary := sw.lowerBoundary.Add(sw.windowSize)
+	// Advance the lower boundary of the sliding window by the sliding interval to
+	// define the start of the next window.
+	sw.lowerBoundary = sw.lowerBoundary.Add(sw.slidingInterval)
 
 	elements := make([]T, 0, len(sw.queue))
 	var remainingElements []timedElement[T]
 queueLoop:
 	for i, element := range sw.queue {
-		if remainingElements == nil && element.eventTime.After(nextWindowStartTime) {
+		if remainingElements == nil && element.eventTime.After(sw.lowerBoundary) {
 			// copy remaining elements
 			remainingElements = make([]timedElement[T], len(sw.queue)-i)
 			_ = copy(remainingElements, sw.queue[i:])
 		}
 		switch {
-		case element.eventTime.Before(tick):
+		case !element.eventTime.After(upperBoundary):
 			elements = append(elements, element.element)
 		default:
 			break queueLoop // we can break since the queue is ordered
@@ -233,4 +298,26 @@ queueLoop:
 	sw.queue = remainingElements
 
 	return elements
+}
+
+// calculateWindowStart calculates the start time of the sliding window to
+// which the event belongs, and the duration between the event time and the
+// start time of that window.
+func (sw *SlidingWindow[T]) calculateWindowStart(
+	eventTime time.Time,
+) (time.Time, time.Duration) {
+	if eventTime.IsZero() {
+		return eventTime, 0
+	}
+
+	// convert the event time to a Unix Nano timestamp
+	// (nanoseconds since epoch)
+	eventTimeNanos := eventTime.UnixNano()
+
+	// calculate the window start in nanoseconds
+	delta := eventTimeNanos % sw.slidingInterval.Nanoseconds()
+	windowStartNanos := eventTimeNanos - delta
+
+	return time.Unix(0, windowStartNanos).In(eventTime.Location()),
+		time.Duration(delta)
 }

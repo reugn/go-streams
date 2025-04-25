@@ -23,7 +23,9 @@ func NewPassThrough() *PassThrough {
 		in:  make(chan any),
 		out: make(chan any),
 	}
-	go passThrough.doStream()
+
+	// start processing stream elements
+	go passThrough.stream()
 
 	return passThrough
 }
@@ -58,7 +60,7 @@ func (pt *PassThrough) transmit(inlet streams.Inlet) {
 	close(inlet.In())
 }
 
-func (pt *PassThrough) doStream() {
+func (pt *PassThrough) stream() {
 	for element := range pt.in {
 		pt.out <- element
 	}

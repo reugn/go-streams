@@ -34,7 +34,9 @@ func NewReduce[T any](reduceFunction ReduceFunction[T]) *Reduce[T] {
 		in:             make(chan any),
 		out:            make(chan any),
 	}
-	go reduce.doStream()
+
+	// start processing stream elements
+	go reduce.stream()
 
 	return reduce
 }
@@ -69,7 +71,13 @@ func (r *Reduce[T]) transmit(inlet streams.Inlet) {
 	close(inlet.In())
 }
 
-func (r *Reduce[T]) doStream() {
+// stream consumes elements from the input channel, applies the reduceFunction to
+// each element along with the previously reduced value, and emits the updated
+// value into the output channel. The first element received becomes the initial
+// reduced value. Subsequent elements are combined with the accumulated result.
+// All input elements are assumed to be of type T. The processing is done sequentially,
+// ensuring that the order of accumulation is maintained.
+func (r *Reduce[T]) stream() {
 	var lastReduced any
 	for element := range r.in {
 		if lastReduced == nil {

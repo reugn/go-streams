@@ -2,6 +2,7 @@ package flow
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/reugn/go-streams"
 )
@@ -30,19 +31,24 @@ var _ streams.Flow = (*Map[any, any])(nil)
 // T specifies the incoming element type, and the outgoing element type is R.
 //
 // mapFunction is the Map transformation function.
-// parallelism is the flow parallelism factor. In case the events order matters, use parallelism = 1.
-// If the parallelism argument is not positive, NewMap will panic.
+// parallelism specifies the number of goroutines to use for parallel processing. If
+// the order of elements in the output stream must be preserved, set parallelism to 1.
+//
+// NewMap will panic if parallelism is less than 1.
 func NewMap[T, R any](mapFunction MapFunction[T, R], parallelism int) *Map[T, R] {
 	if parallelism < 1 {
 		panic(fmt.Sprintf("nonpositive Map parallelism: %d", parallelism))
 	}
+
 	mapFlow := &Map[T, R]{
 		mapFunction: mapFunction,
 		in:          make(chan any),
 		out:         make(chan any),
 		parallelism: parallelism,
 	}
-	go mapFlow.doStream()
+
+	// start processing stream elements
+	go mapFlow.stream()
 
 	return mapFlow
 }
@@ -77,18 +83,24 @@ func (m *Map[T, R]) transmit(inlet streams.Inlet) {
 	close(inlet.In())
 }
 
-func (m *Map[T, R]) doStream() {
-	sem := make(chan struct{}, m.parallelism)
-	for elem := range m.in {
-		sem <- struct{}{}
-		go func(element T) {
-			defer func() { <-sem }()
-			result := m.mapFunction(element)
-			m.out <- result
-		}(elem.(T))
-	}
+// stream reads elements from the input channel, applies the mapFunction
+// to each element, and sends the resulting element to the output channel.
+// It uses a pool of goroutines to process elements in parallel.
+func (m *Map[T, R]) stream() {
+	var wg sync.WaitGroup
+	// create a pool of worker goroutines
 	for i := 0; i < m.parallelism; i++ {
-		sem <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for element := range m.in {
+				m.out <- m.mapFunction(element.(T))
+			}
+		}()
 	}
+
+	// wait for worker goroutines to finish processing inbound elements
+	wg.Wait()
+	// close the output channel
 	close(m.out)
 }

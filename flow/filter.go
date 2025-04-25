@@ -2,6 +2,7 @@ package flow
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/reugn/go-streams"
 )
@@ -31,20 +32,27 @@ var _ streams.Flow = (*Filter[any])(nil)
 // NewFilter returns a new Filter operator.
 // T specifies the incoming and the outgoing element type.
 //
-// filterPredicate is the boolean-valued filter function.
-// parallelism is the flow parallelism factor. In case the events order matters, use parallelism = 1.
-// If the parallelism argument is not positive, NewFilter will panic.
+// filterPredicate is a function that accepts an element of type T and returns true
+// if the element should be included in the output stream, and false if it should be
+// filtered out.
+// parallelism specifies the number of goroutines to use for parallel processing. If
+// the order of elements in the output stream must be preserved, set parallelism to 1.
+//
+// NewFilter will panic if parallelism is less than 1.
 func NewFilter[T any](filterPredicate FilterPredicate[T], parallelism int) *Filter[T] {
 	if parallelism < 1 {
 		panic(fmt.Sprintf("nonpositive Filter parallelism: %d", parallelism))
 	}
+
 	filter := &Filter[T]{
 		filterPredicate: filterPredicate,
 		in:              make(chan any),
 		out:             make(chan any),
 		parallelism:     parallelism,
 	}
-	go filter.doStream()
+
+	// start processing stream elements
+	go filter.stream()
 
 	return filter
 }
@@ -79,20 +87,26 @@ func (f *Filter[T]) transmit(inlet streams.Inlet) {
 	close(inlet.In())
 }
 
-// doStream discards items that don't match the filter predicate.
-func (f *Filter[T]) doStream() {
-	sem := make(chan struct{}, f.parallelism)
-	for elem := range f.in {
-		sem <- struct{}{}
-		go func(element T) {
-			defer func() { <-sem }()
-			if f.filterPredicate(element) {
-				f.out <- element
-			}
-		}(elem.(T))
-	}
+// stream reads elements from the input channel, filters them using the
+// filterPredicate, and sends the filtered elements to the output channel.
+// It uses a pool of goroutines to process elements in parallel.
+func (f *Filter[T]) stream() {
+	var wg sync.WaitGroup
+	// create a pool of worker goroutines
 	for i := 0; i < f.parallelism; i++ {
-		sem <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for element := range f.in {
+				if f.filterPredicate(element.(T)) {
+					f.out <- element
+				}
+			}
+		}()
 	}
+
+	// wait for worker goroutines to finish processing inbound elements
+	wg.Wait()
+	// close the output channel
 	close(f.out)
 }

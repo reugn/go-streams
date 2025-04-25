@@ -38,7 +38,9 @@ func NewFold[T, R any](init R, foldFunction FoldFunction[T, R]) *Fold[T, R] {
 		in:           make(chan any),
 		out:          make(chan any),
 	}
-	go foldFlow.doStream()
+
+	// start processing stream elements
+	go foldFlow.stream()
 
 	return foldFlow
 }
@@ -73,7 +75,12 @@ func (m *Fold[T, R]) transmit(inlet streams.Inlet) {
 	close(inlet.In())
 }
 
-func (m *Fold[T, R]) doStream() {
+// stream consumes elements from the input channel, applies the foldFunction to
+// each element along with the previously accumulated value, and emits the updated
+// value into the output channel. All input elements are assumed to be of type T.
+// The processing is done sequentially, ensuring that the order of accumulation is
+// maintained.
+func (m *Fold[T, R]) stream() {
 	lastFolded := m.init
 	for element := range m.in {
 		lastFolded = m.foldFunction(element.(T), lastFolded)

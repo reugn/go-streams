@@ -10,7 +10,7 @@ import (
 	"github.com/reugn/go-streams/internal/assert"
 )
 
-func TestSlidingWindow(t *testing.T) {
+func TestSlidingWindow_SystemTime(t *testing.T) {
 	in := make(chan any, 7)
 	out := make(chan any, 7)
 
@@ -24,7 +24,7 @@ func TestSlidingWindow(t *testing.T) {
 		for _, v := range inputValues {
 			ingestDeferred(v, in, 15*time.Millisecond)
 		}
-		closeDeferred(in, 250*time.Millisecond)
+		close(in)
 	}()
 
 	source.
@@ -34,14 +34,13 @@ func TestSlidingWindow(t *testing.T) {
 	outputValues := readSlice[[]string](sink.Out)
 	fmt.Println(outputValues)
 
-	assert.Equal(t, 6, len(outputValues)) // [[a b c] [b c d] [c d e] [d e f g] [f g] [g]]
-
-	assert.Equal(t, []string{"a", "b", "c"}, outputValues[0])
-	assert.Equal(t, []string{"b", "c", "d"}, outputValues[1])
-	// assert.Equal(t, []string{"c", "d", "e"}, outputValues[2])
-	// assert.Equal(t, []string{"d", "e", "f", "g"}, outputValues[3])
-	assert.Equal(t, []string{"f", "g"}, outputValues[4])
-	assert.Equal(t, []string{"g"}, outputValues[5])
+	// The length of the output may vary when using processing time.
+	// This is due to the imprecision in determining the lower boundary
+	// of the first window.
+	outputLen := len(outputValues)
+	if outputLen < 4 || outputLen > 5 {
+		t.Fatalf("Unexpected output size: %d", outputLen)
+	}
 }
 
 type element struct {
@@ -51,7 +50,7 @@ type element struct {
 
 func TestSlidingWindow_WithExtractor(t *testing.T) {
 	in := make(chan any, 10)
-	out := make(chan any, 7)
+	out := make(chan any, 10)
 
 	source := ext.NewChanSource(in)
 	slidingWindow := flow.NewSlidingWindowWithOpts(
@@ -64,24 +63,25 @@ func TestSlidingWindow_WithExtractor(t *testing.T) {
 		})
 	sink := ext.NewChanSink(out)
 
-	now := time.Now()
+	now := time.Date(2025, 1, 1, 0, 0, 0, 0, time.Local)
 	inputValues := []element{
-		{"c", now.Add(29 * time.Millisecond).UnixMilli()},
 		{"a", now.Add(2 * time.Millisecond).UnixMilli()},
 		{"b", now.Add(17 * time.Millisecond).UnixMilli()},
+		{"c", now.Add(26 * time.Millisecond).UnixMilli()},
 		{"d", now.Add(35 * time.Millisecond).UnixMilli()},
 		{"f", now.Add(93 * time.Millisecond).UnixMilli()},
 		{"e", now.Add(77 * time.Millisecond).UnixMilli()},
-		{"g", now.Add(119 * time.Millisecond).UnixMilli()},
+		{"g", now.Add(118 * time.Millisecond).UnixMilli()},
 	}
 	go ingestSlice(inputValues, in)
 	go closeDeferred(in, 250*time.Millisecond)
 
-	// send some out-of-order events
-	go ingestDeferred(element{"h", now.Add(5 * time.Millisecond).UnixMilli()},
-		in, 145*time.Millisecond)
-	go ingestDeferred(element{"i", now.Add(3 * time.Millisecond).UnixMilli()},
-		in, 145*time.Millisecond)
+	go ingestDeferred(element{"h", now.Add(140 * time.Millisecond).UnixMilli()},
+		in, 140*time.Millisecond)
+
+	// late event
+	go ingestDeferred(element{"i", now.Add(80 * time.Millisecond).UnixMilli()},
+		in, 135*time.Millisecond)
 
 	source.
 		Via(slidingWindow).
@@ -93,14 +93,16 @@ func TestSlidingWindow_WithExtractor(t *testing.T) {
 	}
 	fmt.Println(outputValues)
 
-	assert.Equal(t, 6, len(outputValues)) // [[a b c d] [c d] [e] [e f] [f g] [i h g]]
+	// [[a b c d] [c d] [e] [e f] [f g] [g h] [h]]
+	assert.Equal(t, 7, len(outputValues))
 
 	assert.Equal(t, []string{"a", "b", "c", "d"}, outputValues[0])
 	assert.Equal(t, []string{"c", "d"}, outputValues[1])
 	assert.Equal(t, []string{"e"}, outputValues[2])
 	assert.Equal(t, []string{"e", "f"}, outputValues[3])
 	assert.Equal(t, []string{"f", "g"}, outputValues[4])
-	assert.Equal(t, []string{"i", "h", "g"}, outputValues[5])
+	assert.Equal(t, []string{"g", "h"}, outputValues[5])
+	assert.Equal(t, []string{"h"}, outputValues[6])
 }
 
 func elementValues(elements []element) []string {
@@ -124,27 +126,32 @@ func TestSlidingWindow_WithExtractorPtr(t *testing.T) {
 				return time.UnixMilli(e.ts)
 			},
 			EmitPartialWindow: true,
+			AllowedLateness:   10 * time.Millisecond,
 		})
 	sink := ext.NewChanSink(out)
 
-	now := time.Now()
+	now := time.Date(2025, 1, 1, 0, 0, 0, 0, time.Local)
 	inputValues := []*element{
-		{"c", now.Add(29 * time.Millisecond).UnixMilli()},
 		{"a", now.Add(2 * time.Millisecond).UnixMilli()},
 		{"b", now.Add(17 * time.Millisecond).UnixMilli()},
+		{"c", now.Add(26 * time.Millisecond).UnixMilli()},
 		{"d", now.Add(35 * time.Millisecond).UnixMilli()},
 		{"f", now.Add(93 * time.Millisecond).UnixMilli()},
 		{"e", now.Add(77 * time.Millisecond).UnixMilli()},
-		{"g", now.Add(119 * time.Millisecond).UnixMilli()},
+		{"g", now.Add(118 * time.Millisecond).UnixMilli()},
 	}
 	go ingestSlice(inputValues, in)
 	go closeDeferred(in, 250*time.Millisecond)
 
-	// send some out-of-order events
-	go ingestDeferred(&element{"h", now.Add(5 * time.Millisecond).UnixMilli()},
-		in, 145*time.Millisecond)
-	go ingestDeferred(&element{"i", now.Add(3 * time.Millisecond).UnixMilli()},
-		in, 145*time.Millisecond)
+	go ingestDeferred(&element{"h", now.Add(135 * time.Millisecond).UnixMilli()},
+		in, 135*time.Millisecond)
+
+	// late event allowed
+	go ingestDeferred(&element{"i", now.Add(118 * time.Millisecond).UnixMilli()},
+		in, 125*time.Millisecond)
+	// late event discarded
+	go ingestDeferred(&element{"j", now.Add(10 * time.Millisecond).UnixMilli()},
+		in, 125*time.Millisecond)
 
 	source.
 		Via(slidingWindow).
@@ -157,16 +164,16 @@ func TestSlidingWindow_WithExtractorPtr(t *testing.T) {
 	}
 	fmt.Println(outputValues)
 
-	assert.Equal(t, 8, len(outputValues)) // [[a b] [a b c d] [b c d] [d e] [e f] [e f g] [f g] [i h g]]
+	// [[a b c d] [c d] [e] [e f] [f g] [g i] [h]]
+	assert.Equal(t, 7, len(outputValues))
 
-	assert.Equal(t, []string{"a", "b"}, outputValues[0])
-	assert.Equal(t, []string{"a", "b", "c", "d"}, outputValues[1])
-	assert.Equal(t, []string{"b", "c", "d"}, outputValues[2])
-	assert.Equal(t, []string{"d", "e"}, outputValues[3])
-	assert.Equal(t, []string{"e", "f"}, outputValues[4])
-	assert.Equal(t, []string{"e", "f", "g"}, outputValues[5])
-	assert.Equal(t, []string{"f", "g"}, outputValues[6])
-	assert.Equal(t, []string{"i", "h", "g"}, outputValues[7])
+	assert.Equal(t, []string{"a", "b", "c", "d"}, outputValues[0])
+	assert.Equal(t, []string{"c", "d"}, outputValues[1])
+	assert.Equal(t, []string{"e"}, outputValues[2])
+	assert.Equal(t, []string{"e", "f"}, outputValues[3])
+	assert.Equal(t, []string{"f", "g"}, outputValues[4])
+	assert.Equal(t, []string{"g", "i"}, outputValues[5])
+	assert.Equal(t, []string{"h"}, outputValues[6])
 }
 
 func elementValuesPtr(elements []*element) []string {
@@ -181,30 +188,72 @@ func TestSlidingWindow_InvalidArguments(t *testing.T) {
 	assert.Panics(t, func() {
 		flow.NewSlidingWindow[string](10*time.Millisecond, 20*time.Millisecond)
 	})
+	assert.Panics(t, func() {
+		flow.NewSlidingWindowWithOpts[string](
+			10*time.Millisecond,
+			5*time.Millisecond,
+			flow.SlidingWindowOpts[string]{AllowedLateness: 10 * time.Millisecond},
+		)
+	})
 }
 
-func TestSlidingWindow_EarlyStreamClosure(t *testing.T) {
-	in := make(chan any, 3)
-	out := make(chan any, 3)
-
-	source := ext.NewChanSource(in)
-	slidingWindow := flow.NewSlidingWindow[element](50*time.Millisecond, 20*time.Millisecond)
-	sink := ext.NewChanSink(out)
-
-	now := time.Now()
-	inputValues := []element{
-		{"a", now.Add(2 * time.Millisecond).UnixMilli()},
-		{"b", now.Add(17 * time.Millisecond).UnixMilli()},
+func TestSlidingWindow(t *testing.T) {
+	tests := []struct {
+		name         string
+		input        []element
+		closeAfter   time.Duration
+		outputLength int
+	}{
+		{
+			name:         "emptyStream",
+			input:        []element{},
+			closeAfter:   time.Millisecond,
+			outputLength: 0,
+		},
+		{
+			name: "earlyStreamClosure",
+			input: []element{
+				{"a", time.Now().Add(2 * time.Millisecond).UnixMilli()},
+			},
+			closeAfter:   10 * time.Millisecond,
+			outputLength: 0,
+		},
+		{
+			name: "zeroTime",
+			input: []element{
+				{"a", time.Time{}.UnixMilli()},
+			},
+			closeAfter:   100 * time.Millisecond,
+			outputLength: 1,
+		},
 	}
-	go ingestSlice(inputValues, in)
-	go closeDeferred(in, 10*time.Millisecond)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := make(chan any, 1)
+			out := make(chan any, 1)
 
-	source.
-		Via(slidingWindow).
-		To(sink)
+			source := ext.NewChanSource(in)
+			slidingWindow := flow.NewSlidingWindowWithOpts[element](
+				50*time.Millisecond,
+				20*time.Millisecond,
+				flow.SlidingWindowOpts[element]{
+					EventTimeExtractor: func(e element) time.Time {
+						return time.UnixMilli(e.ts)
+					},
+				})
+			sink := ext.NewChanSink(out)
 
-	outputValues := readSlice[[]any](sink.Out)
-	fmt.Println(outputValues)
+			go ingestSlice(tt.input, in)
+			go closeDeferred(in, tt.closeAfter)
 
-	assert.Equal(t, 0, len(outputValues))
+			source.
+				Via(slidingWindow).
+				To(sink)
+
+			outputValues := readSlice[[]element](sink.Out)
+			fmt.Println(outputValues)
+
+			assert.Equal(t, tt.outputLength, len(outputValues))
+		})
+	}
 }

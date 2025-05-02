@@ -12,19 +12,42 @@ type Keyed[K comparable, V any] struct {
 	keySelector func(V) K
 	keyedFlows  map[K]streams.Flow
 	operators   []func() streams.Flow
-	in          chan any
-	out         chan any
+
+	in  chan any
+	out chan any
 }
 
 // Verify Keyed satisfies the Flow interface.
 var _ streams.Flow = (*Keyed[int, any])(nil)
 
-// NewKeyed returns a new Keyed operator, which takes a stream and splits it
-// into multiple streams based on the keys extracted from the elements using
+// NewKeyed returns a new Keyed operator. This operator splits an input stream
+// into multiple sub-streams based on keys extracted from the elements using
 // the keySelector function.
 //
 // Each of these individual streams is then transformed by the provided chain
-// of operators, and the results are sent to the output channel.
+// of operators, and the results are sent to the output channel. Due to the
+// concurrent processing of each keyed stream, the order of elements in the
+// output channel is not deterministic and may not reflect the original order
+// of elements in the input stream.
+//
+// Each operator supplier must return a new instance of the flow to ensure
+// that each keyed stream has its own independent state.
+//
+// Example:
+//
+//	newSlidingWindow := func() streams.Flow {
+//		return flow.NewSlidingWindow[event](10*time.Second, time.Second)
+//	}
+//
+//	newMap := func() streams.Flow {
+//		return flow.NewMap(func(events []event) event {
+//			return events[len(events)-1]
+//		}, 1)
+//	}
+//
+//	keyed := flow.NewKeyed(func(e event) string {
+//		return e.serial
+//	}, newSlidingWindow, newMap)
 //
 // If no operators are provided, NewKeyed will panic.
 func NewKeyed[K comparable, V any](
@@ -33,6 +56,7 @@ func NewKeyed[K comparable, V any](
 	if len(operators) == 0 {
 		panic("at least one operator supplier is required")
 	}
+
 	keyedFlow := &Keyed[K, V]{
 		keySelector: keySelector,
 		keyedFlows:  make(map[K]streams.Flow),
@@ -109,21 +133,26 @@ func (k *Keyed[K, V]) getKeyedFlow(key K, wg *sync.WaitGroup) streams.Flow {
 	keyedWorkflow, ok := k.keyedFlows[key]
 	if !ok { // this is the first element for the key
 		wg.Add(1)
+
 		// build the workflow
 		keyedWorkflow = k.operators[0]()
 		workflowTail := keyedWorkflow
 		for _, operatorFactory := range k.operators[1:] {
 			workflowTail = workflowTail.Via(operatorFactory())
 		}
-		// start processing incoming stream elements
+
+		// start a goroutine to forward processed elements from the
+		// keyed workflow to the output channel
 		go func() {
 			defer wg.Done()
 			for e := range workflowTail.Out() {
 				k.out <- e
 			}
 		}()
+
 		// associate the key with the workflow
 		k.keyedFlows[key] = keyedWorkflow
 	}
+
 	return keyedWorkflow
 }

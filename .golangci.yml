@@ -1,22 +1,18 @@
+version: "2"
 run:
   timeout: 2m
-
 linters:
-  disable-all: true
+  default: none
   enable:
     - dupl
     - errcheck
     - errname
     - errorlint
     - funlen
-    - gci
     - goconst
     - gocritic
     - gocyclo
-    - gofmt
-    - goimports
     - gosec
-    - gosimple
     - govet
     - ineffassign
     - lll
@@ -27,28 +23,45 @@ linters:
     - reassign
     - revive
     - staticcheck
-    - stylecheck
     - thelper
     - tparallel
-    - typecheck
     - unconvert
     - unparam
     - unused
     - usetesting
-
-linters-settings:
-  gocritic:
-    disabled-checks:
-      - exitAfterDefer
-  thelper:
-    test:
-      begin: false
-
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck
-        - unparam
-        - prealloc
-        - funlen
+  settings:
+    gocritic:
+      disabled-checks:
+        - exitAfterDefer
+    thelper:
+      test:
+        begin: false
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - errcheck
+          - funlen
+          - prealloc
+          - unparam
+        path: _test\.go
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

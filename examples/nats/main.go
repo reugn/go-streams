@@ -16,15 +16,10 @@ import (
 
 func main() {
 	args := os.Args[1:]
-	runJet := true
 	if len(args) > 0 {
-		runJet = false
-	}
-
-	if runJet {
-		jetStream()
-	} else {
 		streaming()
+	} else {
+		jetStream()
 	}
 }
 

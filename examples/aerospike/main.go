@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	aero "github.com/aerospike/aerospike-client-go/v7"
+	aero "github.com/aerospike/aerospike-client-go/v8"
 	"github.com/reugn/go-streams/aerospike"
 	"github.com/reugn/go-streams/flow"
 )

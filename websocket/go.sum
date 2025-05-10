@@ -1,4 +1,4 @@
 github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
-github.com/reugn/go-streams v0.11.0 h1:oa4F/bkMr+2hNl6+28e4xPX6VcEfgsTvzmC/8rNK2tI=
-github.com/reugn/go-streams v0.11.0/go.mod h1:QI5XXifJkVJl2jQ6Cra8I9DvWdJTgqcFYR7amvXZ9Lg=
+github.com/reugn/go-streams v0.12.0 h1:SEfTZw5+iP0mQG0jWTxVOHMbqlbZjUB0W6dF3XbYd5Q=
+github.com/reugn/go-streams v0.12.0/go.mod h1:dnXv6QgVTW62gEpILoLHRjI95Es7ECK2/+j9h17aIN8=

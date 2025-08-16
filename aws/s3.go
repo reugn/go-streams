@@ -134,7 +134,7 @@ func (s *S3Source) getObjects(ctx context.Context) {
 							slog.String("key", key))
 					}
 
-					var data []byte
+					data := make([]byte, s.config.ChunkSize)
 					n, err := bufio.NewReaderSize(objectOutput.Body, s.config.ChunkSize).
 						Read(data)
 					if err != nil {

@@ -223,6 +223,9 @@ func (sw *SlidingWindow[T]) emit(delta time.Duration) {
 	case <-timer.C:
 	case <-sw.done:
 		timer.Stop()
+		if sw.opts.EmitPartialWindow {
+			sw.dispatchWindow()
+		}
 		return
 	}
 

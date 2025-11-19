@@ -14,19 +14,9 @@ func editMessage(msg string) string {
 }
 
 func main() {
-	throttlerConfig := flow.DefaultAdaptiveThrottlerConfig()
 	// To setup a custom throttler, you can modify the throttlerConfig struct with your desired values.
 	// For all available options, see the flow.AdaptiveThrottlerConfig struct.
-	// Example:
-	// throttlerConfig.CPUUsageMode = flow.CPUUsageModeHeuristic
-	// throttlerConfig.MaxMemoryPercent = 80.0
-	// throttlerConfig.MaxCPUPercent = 70.0
-	// throttlerConfig.MinThroughput = 10
-	// throttlerConfig.MaxThroughput = 100
-	// throttlerConfig.SampleInterval = 50 * time.Millisecond
-	// throttlerConfig.BufferSize = 10
-	// throttlerConfig.AdaptationFactor = 0.5
-	// throttlerConfig.SmoothTransitions = false
+	throttlerConfig := flow.DefaultAdaptiveThrottlerConfig()
 	throttler := flow.NewAdaptiveThrottler(throttlerConfig)
 	defer throttler.Close()
 

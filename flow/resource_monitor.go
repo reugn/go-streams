@@ -15,8 +15,8 @@ type CPUUsageMode int
 const (
 	// CPUUsageModeHeuristic uses goroutine count as a simple CPU usage proxy
 	CPUUsageModeHeuristic CPUUsageMode = iota
-	// CPUUsageModeReal attempts to measure actual process CPU usage via gopsutil
-	CPUUsageModeReal
+	// CPUUsageModeMeasured attempts to measure actual process CPU usage via gopsutil
+	CPUUsageModeMeasured
 )
 
 // ResourceStats represents current system resource statistics
@@ -50,9 +50,9 @@ type ResourceMonitor struct {
 	// CPU sampling
 	sampler cpuUsageSampler
 
-	memStats runtime.MemStats // Reusable buffer for memory stats
+	// Reusable buffer for memory stats
+	memStats runtime.MemStats
 
-	// Lifecycle
 	mu   sync.RWMutex
 	done chan struct{}
 }
@@ -81,13 +81,10 @@ func NewResourceMonitor(
 		done:            make(chan struct{}),
 	}
 
-	// Initialize CPU sampler
 	rm.initSampler()
 
-	// Initialize with current stats
 	rm.stats.Store(rm.collectStats())
 
-	// Start monitoring goroutine
 	go rm.monitor()
 
 	return rm
@@ -96,7 +93,7 @@ func NewResourceMonitor(
 // initSampler initializes the appropriate CPU sampler based on mode and platform support
 func (rm *ResourceMonitor) initSampler() {
 	switch rm.cpuMode {
-	case CPUUsageModeReal:
+	case CPUUsageModeMeasured:
 		// Try gopsutil first, fallback to heuristic
 		if sampler, err := newGopsutilProcessSampler(); err == nil {
 			rm.sampler = sampler

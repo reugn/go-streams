@@ -196,14 +196,14 @@ func TestResourceMonitor_CPUUsageModeHeuristic(t *testing.T) {
 	}
 }
 
-func TestResourceMonitor_CPUUsageModeReal(t *testing.T) {
-	rm := NewResourceMonitor(100*time.Millisecond, 80.0, 70.0, CPUUsageModeReal)
+func TestResourceMonitor_CPUUsageModeMeasured(t *testing.T) {
+	rm := NewResourceMonitor(100*time.Millisecond, 80.0, 70.0, CPUUsageModeMeasured)
 	defer rm.Close()
 
 	// Should use gopsutil sampler or fallback to heuristic
 	if _, ok := rm.sampler.(*gopsutilProcessSampler); ok {
-		if rm.cpuMode != CPUUsageModeReal {
-			t.Errorf("expected cpuMode %v, got %v", CPUUsageModeReal, rm.cpuMode)
+		if rm.cpuMode != CPUUsageModeMeasured {
+			t.Errorf("expected cpuMode %v, got %v", CPUUsageModeMeasured, rm.cpuMode)
 		}
 	} else {
 		if rm.cpuMode != CPUUsageModeHeuristic {

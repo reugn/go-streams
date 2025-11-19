@@ -38,6 +38,7 @@ func loadSystemMemoryReader() systemMemoryReader {
 }
 
 // setSystemMemoryReader replaces the current system memory reader and returns a restore function.
+// Created for testing/mocking purposes.
 func setSystemMemoryReader(reader systemMemoryReader) func() {
 	prev := loadSystemMemoryReader()
 	systemMemoryProvider.Store(reader)

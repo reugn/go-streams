@@ -635,7 +635,7 @@ func TestAdaptiveThrottler_CloseStopsBackgroundLoops(t *testing.T) {
 
 func TestAdaptiveThrottler_CPUUsageMode(t *testing.T) {
 	config := DefaultAdaptiveThrottlerConfig()
-	config.CPUUsageMode = CPUUsageModeReal
+	config.CPUUsageMode = CPUUsageModeMeasured
 
 	at := NewAdaptiveThrottler(config)
 	defer func() {

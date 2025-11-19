@@ -41,7 +41,7 @@ type AdaptiveThrottlerConfig struct {
 	// CPUUsageModeHeuristic: Estimates CPU usage using a simple heuristic (goroutine count), suitable for platforms
 	// where accurate process CPU measurement is not supported.
 	//
-	// CPUUsageModeReal: Attempts to measure actual process CPU usage via gopsutil
+	// CPUUsageModeMeasured: Attempts to measure actual process CPU usage via gopsutil
 	// (when supported), providing more accurate CPU usage readings.
 	CPUUsageMode CPUUsageMode
 
@@ -67,7 +67,7 @@ func DefaultAdaptiveThrottlerConfig() AdaptiveThrottlerConfig {
 		BufferSize:          500,                    // Match max throughput for 1 second buffer at max rate
 		AdaptationFactor:    0.15,                   // Slightly more conservative adaptation
 		SmoothTransitions:   true,                   // Keep smooth transitions enabled by default
-		CPUUsageMode:        CPUUsageModeReal,       // Use actual process CPU usage via gopsutil
+		CPUUsageMode:        CPUUsageModeMeasured,   // Use actual process CPU usage via gopsutil
 		HysteresisBuffer:    5.0,                    // Prevent oscillations around threshold
 		MaxRateChangeFactor: 0.3,                    // More conservative rate changes
 	}
@@ -80,8 +80,16 @@ type resourceMonitorInterface interface {
 	Close()
 }
 
-// AdaptiveThrottler is a flow that adaptively throttles throughput based on
-// system resource availability
+// AdaptiveThrottler implements a feedback control system that:
+// - Monitors CPU and memory usage at regular intervals
+//
+// - Reduces throughput when resources exceed thresholds (with severity-based scaling)
+//
+// - Gradually increases throughput when resources are available (with hysteresis)
+//
+// - Applies smoothing to prevent abrupt rate changes
+//
+// - Enforces minimum and maximum throughput bounds
 type AdaptiveThrottler struct {
 	config  AdaptiveThrottlerConfig
 	monitor resourceMonitorInterface
@@ -112,7 +120,6 @@ var _ streams.Flow = (*AdaptiveThrottler)(nil)
 
 // NewAdaptiveThrottler creates a new adaptive throttler
 func NewAdaptiveThrottler(config AdaptiveThrottlerConfig) *AdaptiveThrottler {
-	// Validate config
 	if config.MaxMemoryPercent <= 0 || config.MaxMemoryPercent > 100 {
 		panic(fmt.Sprintf("invalid MaxMemoryPercent: %f", config.MaxMemoryPercent))
 	}
@@ -252,7 +259,8 @@ func (at *AdaptiveThrottler) adaptRate() {
 		at.currentRate.Store(newRateInt)
 		at.maxElements.Store(newRateInt)
 		at.counter.Store(0) // Reset quota counter to apply new rate immediately
-		// Wake any blocked emitters so the new quota takes effect without waiting for the next period tick.
+		// Wake any blocked emitters
+		// so the new quota takes effect without waiting for the next period tick.
 		at.notifyQuotaReset()
 		at.lastAdaptation = time.Now()
 	}

@@ -35,7 +35,11 @@ func (m *mockResourceMonitor) SetStats(stats ResourceStats) {
 func (m *mockResourceMonitor) Close() {}
 
 // newAdaptiveThrottlerWithMonitor creates an AdaptiveThrottler with a mock monitor for testing
-func newAdaptiveThrottlerWithMonitor(config AdaptiveThrottlerConfig, monitor resourceMonitorInterface, customPeriod ...time.Duration) *AdaptiveThrottler {
+func newAdaptiveThrottlerWithMonitor(
+	config AdaptiveThrottlerConfig,
+	monitor resourceMonitorInterface,
+	customPeriod ...time.Duration,
+) *AdaptiveThrottler {
 	period := time.Second
 	if len(customPeriod) > 0 && customPeriod[0] > 0 {
 		period = customPeriod[0]
@@ -149,10 +153,8 @@ func TestAdaptiveThrottler_ConfigValidation(t *testing.T) {
 					if tt.expectedPanic != "" && !strings.Contains(panicMsg, tt.expectedPanic) {
 						t.Errorf("panic message should contain %q, got: %v", tt.expectedPanic, r)
 					}
-				} else {
-					if tt.shouldPanic {
-						t.Error("expected panic but didn't get one")
-					}
+				} else if tt.shouldPanic {
+					t.Error("expected panic but didn't get one")
 				}
 			}()
 			NewAdaptiveThrottler(tt.config)
@@ -519,8 +521,10 @@ func TestAdaptiveThrottler_SmoothTransitions(t *testing.T) {
 	// This verifies that smoothing is actually working (gradual vs immediate)
 	if expectedMinRateWithoutSmoothing > int64(config.MinThroughput) {
 		if actualReduction >= aggressiveReduction {
-			t.Errorf("with smoothing enabled, rate reduction should be gradual. Got reduction of %d (from %d to %d), expected less than aggressive reduction of %d",
-				actualReduction, initialRate, finalRate, aggressiveReduction)
+			t.Errorf("with smoothing enabled, rate reduction should be gradual. "+
+				"Got reduction of %d (from %d to %d), expected less than aggressive reduction of %d",
+				actualReduction, initialRate, finalRate, aggressiveReduction,
+			)
 		}
 	}
 }
@@ -631,7 +635,7 @@ func TestAdaptiveThrottler_CloseStopsBackgroundLoops(t *testing.T) {
 
 func TestAdaptiveThrottler_CPUUsageMode(t *testing.T) {
 	config := DefaultAdaptiveThrottlerConfig()
-	config.CPUUsageMode = CPUUsageModeRusage
+	config.CPUUsageMode = CPUUsageModeReal
 
 	at := NewAdaptiveThrottler(config)
 	defer func() {
@@ -919,7 +923,7 @@ func TestAdaptiveThrottler_BufferedQuotaSignal(t *testing.T) {
 	}()
 
 	// Fill the output buffer and quota
-	for i := 0; i < int(config.MaxThroughput); i++ {
+	for i := 0; i < config.MaxThroughput; i++ {
 		select {
 		case at.In() <- i:
 		case <-time.After(100 * time.Millisecond):

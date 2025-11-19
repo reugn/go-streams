@@ -41,7 +41,8 @@ type AdaptiveThrottlerConfig struct {
 	// CPUUsageModeHeuristic: Estimates CPU usage using a simple heuristic (goroutine count), suitable for platforms
 	// where accurate process CPU measurement is not supported.
 	//
-	// CPUUsageModeRusage: Measures process CPU time using OS-level resource usage statistics (when supported), providing more accurate CPU usage readings.
+	// CPUUsageModeReal: Attempts to measure actual process CPU usage via gopsutil
+	// (when supported), providing more accurate CPU usage readings.
 	CPUUsageMode CPUUsageMode
 
 	// Hysteresis buffer to prevent rapid state changes (percentage points).
@@ -61,14 +62,14 @@ func DefaultAdaptiveThrottlerConfig() AdaptiveThrottlerConfig {
 		MaxMemoryPercent:    80.0,                   // Conservative memory threshold
 		MaxCPUPercent:       70.0,                   // Conservative CPU threshold
 		MinThroughput:       10,                     // Reasonable minimum throughput
-		MaxThroughput:       500,                    // More conservative maximum (reduced from 1000)
-		SampleInterval:      200 * time.Millisecond, // Less frequent sampling (increased from 100ms)
+		MaxThroughput:       500,                    // More conservative maximum
+		SampleInterval:      200 * time.Millisecond, // Less frequent sampling
 		BufferSize:          500,                    // Match max throughput for 1 second buffer at max rate
-		AdaptationFactor:    0.15,                   // Slightly more conservative adaptation (reduced from 0.2)
+		AdaptationFactor:    0.15,                   // Slightly more conservative adaptation
 		SmoothTransitions:   true,                   // Keep smooth transitions enabled by default
-		CPUUsageMode:        CPUUsageModeHeuristic,
-		HysteresisBuffer:    5.0, // Prevent oscillations around threshold
-		MaxRateChangeFactor: 0.3, // More conservative rate changes (reduced from 0.5)
+		CPUUsageMode:        CPUUsageModeReal,       // Use actual process CPU usage via gopsutil
+		HysteresisBuffer:    5.0,                    // Prevent oscillations around threshold
+		MaxRateChangeFactor: 0.3,                    // More conservative rate changes
 	}
 }
 

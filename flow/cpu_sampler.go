@@ -1,6 +1,8 @@
 package flow
 
 import (
+	"fmt"
+	"math"
 	"os"
 	"time"
 
@@ -15,6 +17,9 @@ type gopsutilProcessSampler struct {
 
 func newGopsutilProcessSampler() (*gopsutilProcessSampler, error) {
 	pid := os.Getpid()
+	if pid < 0 || pid > math.MaxInt32 {
+		return nil, fmt.Errorf("invalid PID: %d", pid)
+	}
 	proc, err := process.NewProcess(int32(pid))
 	if err != nil {
 		return nil, err

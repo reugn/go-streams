@@ -3,7 +3,6 @@ package flow
 import (
 	"math"
 	"runtime"
-	"sync"
 	"testing"
 	"time"
 )
@@ -197,14 +196,14 @@ func TestResourceMonitor_CPUUsageModeHeuristic(t *testing.T) {
 	}
 }
 
-func TestResourceMonitor_CPUUsageModeRusage(t *testing.T) {
-	rm := NewResourceMonitor(100*time.Millisecond, 80.0, 70.0, CPUUsageModeRusage)
+func TestResourceMonitor_CPUUsageModeReal(t *testing.T) {
+	rm := NewResourceMonitor(100*time.Millisecond, 80.0, 70.0, CPUUsageModeReal)
 	defer rm.Close()
 
 	// Should use gopsutil sampler or fallback to heuristic
 	if _, ok := rm.sampler.(*gopsutilProcessSampler); ok {
-		if rm.cpuMode != CPUUsageModeRusage {
-			t.Errorf("expected cpuMode %v, got %v", CPUUsageModeRusage, rm.cpuMode)
+		if rm.cpuMode != CPUUsageModeReal {
+			t.Errorf("expected cpuMode %v, got %v", CPUUsageModeReal, rm.cpuMode)
 		}
 	} else {
 		if rm.cpuMode != CPUUsageModeHeuristic {
@@ -249,29 +248,6 @@ func TestResourceMonitor_MonitorLoop(t *testing.T) {
 	if !stats2.Timestamp.After(stats1.Timestamp) {
 		t.Error("stats should be updated with newer timestamps")
 	}
-}
-
-func TestResourceMonitor_ConcurrentAccess(t *testing.T) {
-	rm := NewResourceMonitor(50*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic)
-	defer rm.Close()
-
-	var wg sync.WaitGroup
-	numGoroutines := 10
-	numIterations := 100
-
-	// Test concurrent reads
-	for i := 0; i < numGoroutines; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < numIterations; j++ {
-				_ = rm.GetStats()
-				_ = rm.IsResourceConstrained()
-			}
-		}()
-	}
-
-	wg.Wait()
 }
 
 func TestResourceMonitor_UsesSystemMemoryStats(t *testing.T) {

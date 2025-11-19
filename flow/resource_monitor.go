@@ -9,27 +9,14 @@ import (
 	"time"
 )
 
-const (
-	// CPUHeuristicBaselineCPU provides minimum CPU usage estimate for any number of goroutines
-	CPUHeuristicBaselineCPU = 10.0
-	// CPUHeuristicLinearScaleFactor determines CPU increase per goroutine for low counts (1-10)
-	CPUHeuristicLinearScaleFactor = 1.0
-	// CPUHeuristicLogScaleFactor determines logarithmic CPU scaling for higher goroutine counts
-	CPUHeuristicLogScaleFactor = 8.0
-	// CPUHeuristicMaxGoroutinesForLinear switches from linear to logarithmic scaling
-	CPUHeuristicMaxGoroutinesForLinear = 10
-	// CPUHeuristicMaxCPU caps the CPU estimate to leave room for system processes
-	CPUHeuristicMaxCPU = 95.0
-)
-
 // CPUUsageMode defines the strategy for sampling CPU usage
 type CPUUsageMode int
 
 const (
 	// CPUUsageModeHeuristic uses goroutine count as a simple CPU usage proxy
 	CPUUsageModeHeuristic CPUUsageMode = iota
-	// CPUUsageModeRusage samples actual CPU time using syscall.Getrusage
-	CPUUsageModeRusage
+	// CPUUsageModeReal attempts to measure actual process CPU usage via gopsutil
+	CPUUsageModeReal
 )
 
 // ResourceStats represents current system resource statistics
@@ -48,44 +35,6 @@ type cpuUsageSampler interface {
 	Reset()
 	// IsInitialized returns true if the sampler has been initialized with at least one sample
 	IsInitialized() bool
-}
-
-// goroutineHeuristicSampler uses goroutine count as a CPU usage proxy
-type goroutineHeuristicSampler struct{}
-
-func (s *goroutineHeuristicSampler) Sample(deltaTime time.Duration) float64 {
-	// Improved heuristic: uses logarithmic scaling for more realistic CPU estimation
-	// Base level: 1-10 goroutines = baseline CPU usage (10-20%)
-	// Scaling: logarithmic growth to avoid overestimation at high goroutine counts
-	goroutineCount := float64(runtime.NumGoroutine())
-
-	// Baseline CPU usage for minimal goroutines
-	if goroutineCount <= CPUHeuristicMaxGoroutinesForLinear {
-		return CPUHeuristicBaselineCPU + goroutineCount*CPUHeuristicLinearScaleFactor
-	}
-
-	// Logarithmic scaling: ln(goroutines) * scaling factor
-	// At ~100 goroutines: ~50% CPU
-	// At ~1000 goroutines: ~70% CPU
-	// At ~10000 goroutines: ~85% CPU
-	// Caps at 95% to leave room for system processes
-	logScaling := math.Log(goroutineCount) * CPUHeuristicLogScaleFactor
-	estimatedCPU := CPUHeuristicBaselineCPU + logScaling
-
-	// Cap at maximum to be conservative
-	if estimatedCPU > CPUHeuristicMaxCPU {
-		return CPUHeuristicMaxCPU
-	}
-	return estimatedCPU
-}
-
-func (s *goroutineHeuristicSampler) Reset() {
-	// No state to reset for heuristic sampler
-}
-
-func (s *goroutineHeuristicSampler) IsInitialized() bool {
-	// Heuristic sampler is always "initialized" as it doesn't need state
-	return true
 }
 
 // ResourceMonitor monitors system resources and provides current statistics
@@ -147,7 +96,7 @@ func NewResourceMonitor(
 // initSampler initializes the appropriate CPU sampler based on mode and platform support
 func (rm *ResourceMonitor) initSampler() {
 	switch rm.cpuMode {
-	case CPUUsageModeRusage:
+	case CPUUsageModeReal:
 		// Try gopsutil first, fallback to heuristic
 		if sampler, err := newGopsutilProcessSampler(); err == nil {
 			rm.sampler = sampler
@@ -222,7 +171,11 @@ func (rm *ResourceMonitor) tryGetSystemMemory() (systemMemory, bool) {
 	return stats, true
 }
 
-func (rm *ResourceMonitor) memoryUsagePercent(hasSystemStats bool, sysStats systemMemory, procStats *runtime.MemStats) float64 {
+func (rm *ResourceMonitor) memoryUsagePercent(
+	hasSystemStats bool,
+	sysStats systemMemory,
+	procStats *runtime.MemStats,
+) float64 {
 	if hasSystemStats {
 		available := sysStats.Available
 		if available > sysStats.Total {
@@ -272,20 +225,22 @@ func validateResourceStats(stats *ResourceStats) {
 	}
 
 	// Validate memory percent
-	if math.IsNaN(stats.MemoryUsedPercent) || math.IsInf(stats.MemoryUsedPercent, 0) {
+	switch {
+	case math.IsNaN(stats.MemoryUsedPercent) || math.IsInf(stats.MemoryUsedPercent, 0):
 		stats.MemoryUsedPercent = 0
-	} else if stats.MemoryUsedPercent < 0 {
+	case stats.MemoryUsedPercent < 0:
 		stats.MemoryUsedPercent = 0
-	} else if stats.MemoryUsedPercent > 100 {
+	case stats.MemoryUsedPercent > 100:
 		stats.MemoryUsedPercent = 100
 	}
 
 	// Validate CPU percent
-	if math.IsNaN(stats.CPUUsagePercent) || math.IsInf(stats.CPUUsagePercent, 0) {
+	switch {
+	case math.IsNaN(stats.CPUUsagePercent) || math.IsInf(stats.CPUUsagePercent, 0):
 		stats.CPUUsagePercent = 0
-	} else if stats.CPUUsagePercent < 0 {
+	case stats.CPUUsagePercent < 0:
 		stats.CPUUsagePercent = 0
-	} else if stats.CPUUsagePercent > 100 {
+	case stats.CPUUsagePercent > 100:
 		stats.CPUUsagePercent = 100
 	}
 

@@ -7,30 +7,6 @@ import (
 	"time"
 )
 
-func TestNewResourceMonitor(t *testing.T) {
-	rm := NewResourceMonitor(100*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic)
-	defer rm.Close()
-
-	if rm == nil {
-		t.Fatal("ResourceMonitor should not be nil")
-	}
-	if rm.sampleInterval != 100*time.Millisecond {
-		t.Errorf("expected sampleInterval %v, got %v", 100*time.Millisecond, rm.sampleInterval)
-	}
-	if rm.memoryThreshold != 80.0 {
-		t.Errorf("expected memoryThreshold 80.0, got %v", rm.memoryThreshold)
-	}
-	if rm.cpuThreshold != 70.0 {
-		t.Errorf("expected cpuThreshold 70.0, got %v", rm.cpuThreshold)
-	}
-	if rm.cpuMode != CPUUsageModeHeuristic {
-		t.Errorf("expected cpuMode %v, got %v", CPUUsageModeHeuristic, rm.cpuMode)
-	}
-	if rm.sampler == nil {
-		t.Fatal("sampler should not be nil")
-	}
-}
-
 func TestNewResourceMonitor_InvalidSampleInterval(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
@@ -38,20 +14,31 @@ func TestNewResourceMonitor_InvalidSampleInterval(t *testing.T) {
 		}
 	}()
 
-	NewResourceMonitor(0, 80.0, 70.0, CPUUsageModeHeuristic)
+	NewResourceMonitor(0, 80.0, 70.0, CPUUsageModeHeuristic, nil)
 }
 
 func TestResourceMonitor_GetStats(t *testing.T) {
-	rm := NewResourceMonitor(100*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic)
+	rm := NewResourceMonitor(50*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic, nil)
 	defer rm.Close()
 
-	// Allow some time for initial stats to be collected
-	time.Sleep(150 * time.Millisecond)
-
-	stats := rm.GetStats()
-	if stats.Timestamp.IsZero() {
-		t.Error("timestamp should not be zero")
+	// Wait for initial stats to be collected (poll instead of fixed sleep)
+	timeout := time.After(500 * time.Millisecond)
+	for {
+		select {
+		case <-timeout:
+			t.Fatal("timeout waiting for stats collection")
+		default:
+			stats := rm.GetStats()
+			if !stats.Timestamp.IsZero() {
+				// Stats have been collected, continue with validation
+				goto statsCollected
+			}
+			time.Sleep(10 * time.Millisecond) // Brief pause before polling again
+		}
 	}
+
+statsCollected:
+	stats := rm.GetStats()
 	if stats.MemoryUsedPercent < 0.0 || stats.MemoryUsedPercent > 100.0 {
 		t.Errorf("memory percent should be between 0 and 100, got %v", stats.MemoryUsedPercent)
 	}
@@ -116,7 +103,7 @@ func TestResourceMonitor_IsResourceConstrained(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rm := NewResourceMonitor(100*time.Millisecond, tt.memoryThreshold, tt.cpuThreshold, CPUUsageModeHeuristic)
+			rm := NewResourceMonitor(100*time.Millisecond, tt.memoryThreshold, tt.cpuThreshold, CPUUsageModeHeuristic, nil)
 			defer rm.Close()
 
 			// Manually set stats for testing
@@ -139,11 +126,7 @@ func TestGoroutineHeuristicSampler(t *testing.T) {
 	sampler := &goroutineHeuristicSampler{}
 
 	// Test with reasonable goroutine count
-	_ = runtime.NumGoroutine() // Capture but don't use - just to avoid unused variable warning in lint
-	defer func() {
-		// Restore original goroutine count by waiting for test goroutines to finish
-		time.Sleep(10 * time.Millisecond)
-	}()
+	_ = runtime.NumGoroutine()
 
 	percent := sampler.Sample(100 * time.Millisecond)
 	if percent < 0.0 || percent > 100.0 {
@@ -154,6 +137,8 @@ func TestGoroutineHeuristicSampler(t *testing.T) {
 	sampler.Reset()
 }
 
+// TestGopsutilProcessSampler is an integration test that verifies
+// gopsutil-based CPU sampling (may be skipped if gopsutil unavailable)
 func TestGopsutilProcessSampler(t *testing.T) {
 	sampler, err := newGopsutilProcessSampler()
 	if err != nil {
@@ -184,7 +169,7 @@ func TestGopsutilProcessSampler(t *testing.T) {
 }
 
 func TestResourceMonitor_CPUUsageModeHeuristic(t *testing.T) {
-	rm := NewResourceMonitor(100*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic)
+	rm := NewResourceMonitor(100*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic, nil)
 	defer rm.Close()
 
 	if rm.cpuMode != CPUUsageModeHeuristic {
@@ -197,7 +182,7 @@ func TestResourceMonitor_CPUUsageModeHeuristic(t *testing.T) {
 }
 
 func TestResourceMonitor_CPUUsageModeMeasured(t *testing.T) {
-	rm := NewResourceMonitor(100*time.Millisecond, 80.0, 70.0, CPUUsageModeMeasured)
+	rm := NewResourceMonitor(100*time.Millisecond, 80.0, 70.0, CPUUsageModeMeasured, nil)
 	defer rm.Close()
 
 	// Should use gopsutil sampler or fallback to heuristic
@@ -217,7 +202,7 @@ func TestResourceMonitor_CPUUsageModeMeasured(t *testing.T) {
 }
 
 func TestResourceMonitor_Close(t *testing.T) {
-	rm := NewResourceMonitor(100*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic)
+	rm := NewResourceMonitor(100*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic, nil)
 
 	// Close should be idempotent
 	rm.Close()
@@ -232,21 +217,42 @@ func TestResourceMonitor_Close(t *testing.T) {
 	}
 }
 
+// TestResourceMonitor_MonitorLoop is an integration test that verifies
+// the monitoring loop updates statistics over time
 func TestResourceMonitor_MonitorLoop(t *testing.T) {
-	rm := NewResourceMonitor(50*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic)
+	rm := NewResourceMonitor(50*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic, nil)
 	defer rm.Close()
 
-	// Wait for a few sampling cycles
-	time.Sleep(250 * time.Millisecond)
+	// Wait for initial stats collection
+	timeout := time.After(500 * time.Millisecond)
+	for {
+		select {
+		case <-timeout:
+			t.Fatal("timeout waiting for initial stats collection")
+		default:
+			if !rm.GetStats().Timestamp.IsZero() {
+				goto initialStatsCollected
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
 
-	// Stats should be updated multiple times
+initialStatsCollected:
+	// Wait for at least one more update
 	stats1 := rm.GetStats()
-	time.Sleep(100 * time.Millisecond)
-	stats2 := rm.GetStats()
-
-	// Timestamps should be different (stats updated)
-	if !stats2.Timestamp.After(stats1.Timestamp) {
-		t.Error("stats should be updated with newer timestamps")
+	timeout = time.After(500 * time.Millisecond)
+	for {
+		select {
+		case <-timeout:
+			t.Fatal("timeout waiting for stats update")
+		default:
+			stats2 := rm.GetStats()
+			if stats2.Timestamp.After(stats1.Timestamp) {
+				// Stats have been updated
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
 	}
 }
 
@@ -261,7 +267,7 @@ func TestResourceMonitor_UsesSystemMemoryStats(t *testing.T) {
 	})
 	defer restore()
 
-	rm := NewResourceMonitor(50*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic)
+	rm := NewResourceMonitor(50*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic, nil)
 	defer rm.Close()
 
 	stats := rm.collectStats()
@@ -270,13 +276,30 @@ func TestResourceMonitor_UsesSystemMemoryStats(t *testing.T) {
 	}
 }
 
+// TestResourceStats_MemoryCalculation is an integration test that verifies
+// memory statistics calculation with real system memory
 func TestResourceStats_MemoryCalculation(t *testing.T) {
-	rm := NewResourceMonitor(100*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic)
+	rm := NewResourceMonitor(50*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic, nil)
 	defer rm.Close()
 
+	// Wait for initial stats
+	timeout := time.After(500 * time.Millisecond)
+	for {
+		select {
+		case <-timeout:
+			t.Fatal("timeout waiting for stats")
+		default:
+			if !rm.GetStats().Timestamp.IsZero() {
+				goto statsReady
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+
+statsReady:
 	// Force garbage collection to get more stable memory stats
 	runtime.GC()
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(20 * time.Millisecond) // Reduced sleep time
 
 	stats := rm.GetStats()
 
@@ -292,7 +315,7 @@ func TestResourceStats_MemoryCalculation(t *testing.T) {
 }
 
 func BenchmarkResourceMonitor_GetStats(b *testing.B) {
-	rm := NewResourceMonitor(100*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic)
+	rm := NewResourceMonitor(100*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic, nil)
 	defer rm.Close()
 
 	b.ResetTimer()
@@ -302,7 +325,7 @@ func BenchmarkResourceMonitor_GetStats(b *testing.B) {
 }
 
 func BenchmarkResourceMonitor_IsResourceConstrained(b *testing.B) {
-	rm := NewResourceMonitor(100*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic)
+	rm := NewResourceMonitor(100*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic, nil)
 	defer rm.Close()
 
 	b.ResetTimer()

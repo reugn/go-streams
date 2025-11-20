@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/shirou/gopsutil/v4/process"
@@ -39,7 +40,7 @@ func (s *gopsutilProcessSampler) Sample(deltaTime time.Duration) float64 {
 	now := time.Now()
 	if s.lastSample.IsZero() {
 		s.lastSample = now
-		s.lastPercent = percent
+		s.lastPercent = 0.0
 		return 0.0
 	}
 
@@ -48,14 +49,17 @@ func (s *gopsutilProcessSampler) Sample(deltaTime time.Duration) float64 {
 		return s.lastPercent
 	}
 
-	s.lastPercent = percent
-	s.lastSample = now
+	// Normalize CPU usage by the number of cores
+	percent /= float64(runtime.NumCPU())
 
 	if percent > 100.0 {
 		percent = 100.0
 	} else if percent < 0.0 {
 		percent = 0.0
 	}
+
+	s.lastPercent = percent
+	s.lastSample = now
 
 	return percent
 }

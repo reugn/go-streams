@@ -54,6 +54,11 @@ type AdaptiveThrottlerConfig struct {
 	// Limits how much the rate can change in a single step to prevent instability.
 	// Default: 0.3 (max 30% change per cycle)
 	MaxRateChangeFactor float64
+
+	// MemoryReader provides memory usage percentage for containerized deployments.
+	// If nil, system memory will be read via mem.VirtualMemory().
+	// Should return memory used percentage (0-100).
+	MemoryReader func() (float64, error)
 }
 
 // DefaultAdaptiveThrottlerConfig returns sensible defaults for most use cases
@@ -115,31 +120,42 @@ type AdaptiveThrottler struct {
 	stopOnce sync.Once
 }
 
+// Validate checks that the configuration is valid and returns an error if not
+func (c *AdaptiveThrottlerConfig) Validate() error {
+	if c.MaxMemoryPercent <= 0 || c.MaxMemoryPercent > 100 {
+		return fmt.Errorf("invalid MaxMemoryPercent: %f", c.MaxMemoryPercent)
+	}
+	if c.MinThroughput < 1 || c.MaxThroughput < c.MinThroughput {
+		return fmt.Errorf("invalid throughput bounds: min=%d, max=%d", c.MinThroughput, c.MaxThroughput)
+	}
+	if c.AdaptationFactor <= 0 || c.AdaptationFactor >= 1 {
+		return fmt.Errorf("AdaptationFactor must be in (0, 1), got %f", c.AdaptationFactor)
+	}
+	if c.MaxCPUPercent <= 0 || c.MaxCPUPercent > 100 {
+		return fmt.Errorf("invalid MaxCPUPercent: %f", c.MaxCPUPercent)
+	}
+	if c.BufferSize < 1 {
+		return fmt.Errorf("invalid BufferSize: %d", c.BufferSize)
+	}
+	if c.SampleInterval <= 0 {
+		return fmt.Errorf("invalid SampleInterval: %v", c.SampleInterval)
+	}
+	if c.HysteresisBuffer < 0 {
+		return fmt.Errorf("invalid HysteresisBuffer: %f", c.HysteresisBuffer)
+	}
+	if c.MaxRateChangeFactor <= 0 || c.MaxRateChangeFactor > 1 {
+		return fmt.Errorf("invalid MaxRateChangeFactor: %f, must be in (0, 1]", c.MaxRateChangeFactor)
+	}
+	return nil
+}
+
 // Verify AdaptiveThrottler satisfies the Flow interface
 var _ streams.Flow = (*AdaptiveThrottler)(nil)
 
 // NewAdaptiveThrottler creates a new adaptive throttler
 func NewAdaptiveThrottler(config AdaptiveThrottlerConfig) *AdaptiveThrottler {
-	if config.MaxMemoryPercent <= 0 || config.MaxMemoryPercent > 100 {
-		panic(fmt.Sprintf("invalid MaxMemoryPercent: %f", config.MaxMemoryPercent))
-	}
-	if config.MaxCPUPercent <= 0 || config.MaxCPUPercent > 100 {
-		panic(fmt.Sprintf("invalid MaxCPUPercent: %f", config.MaxCPUPercent))
-	}
-	if config.MinThroughput < 1 {
-		panic(fmt.Sprintf("invalid MinThroughput: %d", config.MinThroughput))
-	}
-	if config.MaxThroughput < config.MinThroughput {
-		panic("MaxThroughput must be >= MinThroughput")
-	}
-	if config.BufferSize < 1 {
-		panic(fmt.Sprintf("invalid BufferSize: %d", config.BufferSize))
-	}
-	if config.SampleInterval <= 0 {
-		panic(fmt.Sprintf("invalid SampleInterval: %v", config.SampleInterval))
-	}
-	if config.AdaptationFactor <= 0 || config.AdaptationFactor > 1 {
-		panic(fmt.Sprintf("invalid AdaptationFactor: %f", config.AdaptationFactor))
+	if err := config.Validate(); err != nil {
+		panic(fmt.Sprintf("invalid config: %v", err))
 	}
 
 	// Initialize with max throughput
@@ -152,6 +168,7 @@ func NewAdaptiveThrottler(config AdaptiveThrottlerConfig) *AdaptiveThrottler {
 			config.MaxMemoryPercent,
 			config.MaxCPUPercent,
 			config.CPUUsageMode,
+			config.MemoryReader,
 		),
 		period:      time.Second, // 1 second period
 		in:          make(chan any),
@@ -323,8 +340,13 @@ func (at *AdaptiveThrottler) emit(element any) {
 		select {
 		case <-at.quotaSignal:
 		case <-at.done:
-			// Shutting down: bypass quota to flush pending data.
-			at.out <- element
+			// Shutting down: try to flush pending data, but drop if blocked to avoid deadlock
+			select {
+			case at.out <- element:
+				// Successfully flushed
+			default:
+				// Channel is full or no readers - drop element to ensure clean shutdown
+			}
 			return
 		}
 	}

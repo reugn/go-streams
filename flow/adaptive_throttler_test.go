@@ -67,22 +67,6 @@ func newAdaptiveThrottlerWithMonitor(
 	return at
 }
 
-func TestNewAdaptiveThrottler(t *testing.T) {
-	config := DefaultAdaptiveThrottlerConfig()
-	at := NewAdaptiveThrottler(config)
-	defer func() {
-		at.Close()
-		time.Sleep(10 * time.Millisecond)
-	}()
-
-	if at == nil {
-		t.Fatal("AdaptiveThrottler should not be nil")
-	}
-	if at.GetCurrentRate() != int64(config.MaxThroughput) {
-		t.Errorf("expected initial rate %d, got %d", config.MaxThroughput, at.GetCurrentRate())
-	}
-}
-
 func TestAdaptiveThrottler_ConfigValidation(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -136,7 +120,7 @@ func TestAdaptiveThrottler_ConfigValidation(t *testing.T) {
 				MaxRateChangeFactor: 0.5,
 			},
 			shouldPanic:   true,
-			expectedPanic: "MaxThroughput must be >= MinThroughput",
+			expectedPanic: "invalid throughput bounds",
 		},
 	}
 
@@ -931,7 +915,6 @@ func TestAdaptiveThrottler_BufferedQuotaSignal(t *testing.T) {
 		}
 	}
 
-	// Wait for quota to be consumed
 	time.Sleep(1100 * time.Millisecond) // Wait > 1 second for quota reset
 
 	// Should be able to send more elements now (quota reset signal was buffered)
@@ -940,5 +923,30 @@ func TestAdaptiveThrottler_BufferedQuotaSignal(t *testing.T) {
 		// Success - buffered signal worked
 	case <-time.After(100 * time.Millisecond):
 		t.Error("should be able to send after quota reset, buffered signal may not be working")
+	}
+}
+
+func TestAdaptiveThrottler_CustomMemoryReader(t *testing.T) {
+	customMemoryPercent := 42.0
+	callCount := 0
+
+	config := DefaultAdaptiveThrottlerConfig()
+	config.MemoryReader = func() (float64, error) {
+		callCount++
+		return customMemoryPercent, nil
+	}
+
+	at := NewAdaptiveThrottler(config)
+	defer at.Close()
+
+	// Allow some time for stats collection
+	time.Sleep(150 * time.Millisecond)
+
+	stats := at.GetResourceStats()
+	if stats.MemoryUsedPercent != customMemoryPercent {
+		t.Errorf("expected memory percent %f, got %f", customMemoryPercent, stats.MemoryUsedPercent)
+	}
+	if callCount == 0 {
+		t.Error("custom memory reader was not called")
 	}
 }

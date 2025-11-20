@@ -53,6 +53,9 @@ type ResourceMonitor struct {
 	// Reusable buffer for memory stats
 	memStats runtime.MemStats
 
+	// Memory reader for containerized deployments
+	memoryReader func() (float64, error)
+
 	mu   sync.RWMutex
 	done chan struct{}
 }
@@ -62,6 +65,7 @@ func NewResourceMonitor(
 	sampleInterval time.Duration,
 	memoryThreshold, cpuThreshold float64,
 	cpuMode CPUUsageMode,
+	memoryReader func() (float64, error),
 ) *ResourceMonitor {
 	if sampleInterval <= 0 {
 		panic(fmt.Sprintf("invalid sampleInterval: %v", sampleInterval))
@@ -78,6 +82,7 @@ func NewResourceMonitor(
 		memoryThreshold: memoryThreshold,
 		cpuThreshold:    cpuThreshold,
 		cpuMode:         cpuMode,
+		memoryReader:    memoryReader,
 		done:            make(chan struct{}),
 	}
 
@@ -173,6 +178,20 @@ func (rm *ResourceMonitor) memoryUsagePercent(
 	sysStats systemMemory,
 	procStats *runtime.MemStats,
 ) float64 {
+	// Use custom memory reader if provided (for containerized deployments)
+	if rm.memoryReader != nil {
+		if percent, err := rm.memoryReader(); err == nil {
+			if percent < 0 {
+				return 0
+			}
+			if percent > 100 {
+				return 100
+			}
+			return percent
+		}
+		// Fall back to system memory if custom reader fails
+	}
+
 	if hasSystemStats {
 		available := sysStats.Available
 		if available > sysStats.Total {

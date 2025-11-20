@@ -129,7 +129,7 @@ func (c *AdaptiveThrottlerConfig) Validate() error {
 		return fmt.Errorf("invalid throughput bounds: min=%d, max=%d", c.MinThroughput, c.MaxThroughput)
 	}
 	if c.AdaptationFactor <= 0 || c.AdaptationFactor >= 1 {
-		return fmt.Errorf("AdaptationFactor must be in (0, 1), got %f", c.AdaptationFactor)
+		return fmt.Errorf("invalid AdaptationFactor: %f, must be in (0, 1)", c.AdaptationFactor)
 	}
 	if c.MaxCPUPercent <= 0 || c.MaxCPUPercent > 100 {
 		return fmt.Errorf("invalid MaxCPUPercent: %f", c.MaxCPUPercent)

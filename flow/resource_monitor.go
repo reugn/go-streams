@@ -88,8 +88,6 @@ func NewResourceMonitor(
 
 	rm.initSampler()
 
-	rm.stats.Store(rm.collectStats())
-
 	go rm.monitor()
 
 	return rm
@@ -109,6 +107,8 @@ func (rm *ResourceMonitor) initSampler() {
 	default: // CPUUsageModeHeuristic
 		rm.sampler = &goroutineHeuristicSampler{}
 	}
+
+	rm.stats.Store(rm.collectStats())
 }
 
 // GetStats returns the current resource statistics

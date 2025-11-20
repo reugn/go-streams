@@ -37,7 +37,7 @@ func (m *mockResourceMonitor) Close() {}
 // newAdaptiveThrottlerWithMonitor creates an AdaptiveThrottler with a mock monitor for testing
 func newAdaptiveThrottlerWithMonitor(
 	config AdaptiveThrottlerConfig,
-	monitor resourceMonitorInterface,
+	monitor resourceMonitor,
 	customPeriod ...time.Duration,
 ) *AdaptiveThrottler {
 	period := time.Second

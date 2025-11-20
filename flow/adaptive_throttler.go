@@ -78,8 +78,8 @@ func DefaultAdaptiveThrottlerConfig() AdaptiveThrottlerConfig {
 	}
 }
 
-// resourceMonitorInterface defines the interface for resource monitoring
-type resourceMonitorInterface interface {
+// resourceMonitor defines the interface for resource monitoring
+type resourceMonitor interface {
 	GetStats() ResourceStats
 	IsResourceConstrained() bool
 	Close()
@@ -97,7 +97,7 @@ type resourceMonitorInterface interface {
 // - Enforces minimum and maximum throughput bounds
 type AdaptiveThrottler struct {
 	config  AdaptiveThrottlerConfig
-	monitor resourceMonitorInterface
+	monitor resourceMonitor
 
 	// Current rate (elements per second)
 	currentRate atomic.Int64

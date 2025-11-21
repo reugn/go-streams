@@ -73,7 +73,6 @@ require (
 	github.com/eapache/go-resiliency v1.7.0 // indirect
 	github.com/eapache/go-xerial-snappy v0.0.0-20230731223053-c322873962e3 // indirect
 	github.com/eapache/queue v1.1.0 // indirect
-	github.com/ebitengine/purego v0.9.1 // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.2.1 // indirect
 	github.com/fatih/color v1.13.0 // indirect
@@ -127,12 +126,11 @@ require (
 	github.com/prometheus/common v0.55.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
-	github.com/shirou/gopsutil/v4 v4.25.10 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.5.0 // indirect
+	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
-	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/wadey/gocovmerge v0.0.0-20160331181800-b5bfa59ec0ad // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect

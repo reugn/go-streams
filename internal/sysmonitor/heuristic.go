@@ -1,4 +1,4 @@
-package flow
+package sysmonitor
 
 import (
 	"math"
@@ -19,10 +19,16 @@ const (
 	CPUHeuristicMaxCPU = 95.0
 )
 
-// goroutineHeuristicSampler uses goroutine count as a CPU usage proxy
-type goroutineHeuristicSampler struct{}
+// GoroutineHeuristicSampler uses goroutine count as a CPU usage proxy
+type GoroutineHeuristicSampler struct{}
 
-func (s *goroutineHeuristicSampler) Sample(_ time.Duration) float64 {
+// NewGoroutineHeuristicSampler creates a new heuristic CPU sampler
+func NewGoroutineHeuristicSampler() ProcessCPUSampler {
+	return &GoroutineHeuristicSampler{}
+}
+
+// Sample returns the CPU usage percentage over the given time delta
+func (s *GoroutineHeuristicSampler) Sample(_ time.Duration) float64 {
 	// Uses logarithmic scaling for more realistic CPU estimation
 	// Base level: 1-10 goroutines = baseline CPU usage (10-20%)
 	// Logarithmic growth to avoid overestimation at high goroutine counts
@@ -48,10 +54,12 @@ func (s *goroutineHeuristicSampler) Sample(_ time.Duration) float64 {
 	return estimatedCPU
 }
 
-func (s *goroutineHeuristicSampler) Reset() {
+// Reset prepares the sampler for a new sampling session
+func (s *GoroutineHeuristicSampler) Reset() {
 	// No state to reset for heuristic sampler
 }
 
-func (s *goroutineHeuristicSampler) IsInitialized() bool {
+// IsInitialized returns true if the sampler has been initialized with at least one sample
+func (s *GoroutineHeuristicSampler) IsInitialized() bool {
 	return true
 }

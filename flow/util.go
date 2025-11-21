@@ -2,6 +2,7 @@ package flow
 
 import (
 	"fmt"
+	"math"
 	"sync"
 
 	"github.com/reugn/go-streams"
@@ -176,4 +177,24 @@ func Flatten[T any](parallelism int) streams.Flow {
 	return NewFlatMap(func(element []T) []T {
 		return element
 	}, parallelism)
+}
+
+// clampPercent clamps a percentage value between 0 and 100.
+func clampPercent(percent float64) float64 {
+	if percent < 0 {
+		return 0
+	}
+	if percent > 100 {
+		return 100
+	}
+	return percent
+}
+
+// validatePercent validates and normalizes a percentage value.
+// It checks for NaN or Inf values and clamps the result between 0 and 100.
+func validatePercent(percent float64) float64 {
+	if math.IsNaN(percent) || math.IsInf(percent, 0) {
+		return 0
+	}
+	return clampPercent(percent)
 }

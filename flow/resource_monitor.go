@@ -2,11 +2,12 @@ package flow
 
 import (
 	"fmt"
-	"math"
 	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/reugn/go-streams/internal/sysmonitor"
 )
 
 // CPUUsageMode defines the strategy for sampling CPU usage
@@ -27,16 +28,6 @@ type ResourceStats struct {
 	Timestamp         time.Time
 }
 
-// cpuUsageSampler defines the interface for CPU sampling strategies
-type cpuUsageSampler interface {
-	// Sample returns CPU usage percentage for the given time delta
-	Sample(deltaTime time.Duration) float64
-	// Reset prepares the sampler for a new sampling session
-	Reset()
-	// IsInitialized returns true if the sampler has been initialized with at least one sample
-	IsInitialized() bool
-}
-
 // ResourceMonitor monitors system resources and provides current statistics
 type ResourceMonitor struct {
 	sampleInterval  time.Duration
@@ -48,7 +39,7 @@ type ResourceMonitor struct {
 	stats atomic.Value // *ResourceStats
 
 	// CPU sampling
-	sampler cpuUsageSampler
+	sampler sysmonitor.ProcessCPUSampler
 
 	// Reusable buffer for memory stats
 	memStats runtime.MemStats
@@ -60,7 +51,15 @@ type ResourceMonitor struct {
 	done chan struct{}
 }
 
-// NewResourceMonitor creates a new resource monitor
+// NewResourceMonitor creates a new resource monitor.
+//
+// Panics if:
+//
+// - sampleInterval <= 0
+//
+// - memoryThreshold < 0 or memoryThreshold > 100
+//
+// - cpuThreshold < 0 or cpuThreshold > 100
 func NewResourceMonitor(
 	sampleInterval time.Duration,
 	memoryThreshold, cpuThreshold float64,
@@ -68,12 +67,15 @@ func NewResourceMonitor(
 	memoryReader func() (float64, error),
 ) *ResourceMonitor {
 	if sampleInterval <= 0 {
+		// sampleInterval must be greater than 0
 		panic(fmt.Sprintf("invalid sampleInterval: %v", sampleInterval))
 	}
 	if memoryThreshold < 0 || memoryThreshold > 100 {
+		// memoryThreshold must be between 0 and 100
 		panic(fmt.Sprintf("invalid memoryThreshold: %f, must be between 0 and 100", memoryThreshold))
 	}
 	if cpuThreshold < 0 || cpuThreshold > 100 {
+		// cpuThreshold must be between 0 and 100
 		panic(fmt.Sprintf("invalid cpuThreshold: %f, must be between 0 and 100", cpuThreshold))
 	}
 
@@ -97,15 +99,15 @@ func NewResourceMonitor(
 func (rm *ResourceMonitor) initSampler() {
 	switch rm.cpuMode {
 	case CPUUsageModeMeasured:
-		// Try gopsutil first, fallback to heuristic
-		if sampler, err := newGopsutilProcessSampler(); err == nil {
+		// Try native sampler first, fallback to heuristic
+		if sampler, err := sysmonitor.NewProcessSampler(); err == nil {
 			rm.sampler = sampler
 		} else {
-			rm.sampler = &goroutineHeuristicSampler{}
+			rm.sampler = sysmonitor.NewGoroutineHeuristicSampler()
 			rm.cpuMode = CPUUsageModeHeuristic
 		}
 	default: // CPUUsageModeHeuristic
-		rm.sampler = &goroutineHeuristicSampler{}
+		rm.sampler = sysmonitor.NewGoroutineHeuristicSampler()
 	}
 
 	rm.stats.Store(rm.collectStats())
@@ -146,11 +148,7 @@ func (rm *ResourceMonitor) collectStats() *ResourceStats {
 
 	// Sample CPU usage and validate
 	cpuPercent := rm.sampler.Sample(rm.sampleInterval)
-	if math.IsNaN(cpuPercent) || math.IsInf(cpuPercent, 0) || cpuPercent < 0 {
-		cpuPercent = 0
-	} else if cpuPercent > 100 {
-		cpuPercent = 100
-	}
+	cpuPercent = validatePercent(cpuPercent)
 
 	stats := &ResourceStats{
 		MemoryUsedPercent: memoryPercent,
@@ -165,29 +163,23 @@ func (rm *ResourceMonitor) collectStats() *ResourceStats {
 	return stats
 }
 
-func (rm *ResourceMonitor) tryGetSystemMemory() (systemMemory, bool) {
-	stats, err := getSystemMemory()
+func (rm *ResourceMonitor) tryGetSystemMemory() (sysmonitor.SystemMemory, bool) {
+	stats, err := sysmonitor.GetSystemMemory()
 	if err != nil || stats.Total == 0 {
-		return systemMemory{}, false
+		return sysmonitor.SystemMemory{}, false
 	}
 	return stats, true
 }
 
 func (rm *ResourceMonitor) memoryUsagePercent(
 	hasSystemStats bool,
-	sysStats systemMemory,
+	sysStats sysmonitor.SystemMemory,
 	procStats *runtime.MemStats,
 ) float64 {
 	// Use custom memory reader if provided (for containerized deployments)
 	if rm.memoryReader != nil {
 		if percent, err := rm.memoryReader(); err == nil {
-			if percent < 0 {
-				return 0
-			}
-			if percent > 100 {
-				return 100
-			}
-			return percent
+			return clampPercent(percent)
 		}
 		// Fall back to system memory if custom reader fails
 	}
@@ -206,13 +198,7 @@ func (rm *ResourceMonitor) memoryUsagePercent(
 		used := sysStats.Total - available
 		percent := float64(used) / float64(sysStats.Total) * 100
 
-		if percent < 0 {
-			return 0
-		}
-		if percent > 100 {
-			return 100
-		}
-		return percent
+		return clampPercent(percent)
 	}
 
 	if procStats == nil || procStats.Sys == 0 {
@@ -220,18 +206,7 @@ func (rm *ResourceMonitor) memoryUsagePercent(
 	}
 
 	percent := float64(procStats.Alloc) / float64(procStats.Sys) * 100
-	if percent < 0 {
-		return 0
-	}
-	if percent > 100 {
-		return 100
-	}
-	return percent
-}
-
-type systemMemory struct {
-	Total     uint64
-	Available uint64
+	return clampPercent(percent)
 }
 
 // validateResourceStats sanitizes ResourceStats to ensure valid values
@@ -241,24 +216,10 @@ func validateResourceStats(stats *ResourceStats) {
 	}
 
 	// Validate memory percent
-	switch {
-	case math.IsNaN(stats.MemoryUsedPercent) || math.IsInf(stats.MemoryUsedPercent, 0):
-		stats.MemoryUsedPercent = 0
-	case stats.MemoryUsedPercent < 0:
-		stats.MemoryUsedPercent = 0
-	case stats.MemoryUsedPercent > 100:
-		stats.MemoryUsedPercent = 100
-	}
+	stats.MemoryUsedPercent = validatePercent(stats.MemoryUsedPercent)
 
 	// Validate CPU percent
-	switch {
-	case math.IsNaN(stats.CPUUsagePercent) || math.IsInf(stats.CPUUsagePercent, 0):
-		stats.CPUUsagePercent = 0
-	case stats.CPUUsagePercent < 0:
-		stats.CPUUsagePercent = 0
-	case stats.CPUUsagePercent > 100:
-		stats.CPUUsagePercent = 100
-	}
+	stats.CPUUsagePercent = validatePercent(stats.CPUUsagePercent)
 
 	// Validate goroutine count
 	if stats.GoroutineCount < 0 {
@@ -297,7 +258,6 @@ func (rm *ResourceMonitor) Close() {
 
 	select {
 	case <-rm.done:
-		// Already closed
 		return
 	default:
 		close(rm.done)

@@ -56,9 +56,8 @@ func setupDemoThrottler(elementsProcessed *atomic.Int64) *flow.AdaptiveThrottler
 	config.BufferSize = 32
 	config.AdaptationFactor = 0.5
 	config.SmoothTransitions = true
-	config.MaxMemoryPercent = 40.0 
-	config.MaxCPUPercent = 80.0    
-
+	config.MaxMemoryPercent = 40.0
+	config.MaxCPUPercent = 80.0
 
 	config.MemoryReader = func() (float64, error) {
 		elementCount := elementsProcessed.Load()
@@ -86,7 +85,11 @@ func setupDemoThrottler(elementsProcessed *atomic.Int64) *flow.AdaptiveThrottler
 		return memoryPercent, nil
 	}
 
-	return flow.NewAdaptiveThrottler(config)
+	throttler, err := flow.NewAdaptiveThrottler(&config)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create adaptive throttler: %v", err))
+	}
+	return throttler
 }
 
 func produceBurst(in chan<- any, total int) {

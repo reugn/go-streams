@@ -1,7 +1,6 @@
 package flow
 
 import (
-	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -71,8 +70,8 @@ func TestAdaptiveThrottler_ConfigValidation(t *testing.T) {
 	tests := []struct {
 		name          string
 		config        AdaptiveThrottlerConfig
-		shouldPanic   bool
-		expectedPanic string // Expected substring in panic message
+		shouldError   bool
+		expectedError string // Expected substring in error message
 	}{
 		{
 			name: "valid config",
@@ -87,8 +86,8 @@ func TestAdaptiveThrottler_ConfigValidation(t *testing.T) {
 				HysteresisBuffer:    5.0,
 				MaxRateChangeFactor: 0.5,
 			},
-			shouldPanic:   false,
-			expectedPanic: "",
+			shouldError:   false,
+			expectedError: "",
 		},
 		{
 			name: "invalid MaxMemoryPercent",
@@ -103,8 +102,8 @@ func TestAdaptiveThrottler_ConfigValidation(t *testing.T) {
 				HysteresisBuffer:    5.0,
 				MaxRateChangeFactor: 0.5,
 			},
-			shouldPanic:   true,
-			expectedPanic: "invalid MaxMemoryPercent",
+			shouldError:   true,
+			expectedError: "invalid MaxMemoryPercent",
 		},
 		{
 			name: "invalid MaxThroughput < MinThroughput",
@@ -119,29 +118,27 @@ func TestAdaptiveThrottler_ConfigValidation(t *testing.T) {
 				HysteresisBuffer:    5.0,
 				MaxRateChangeFactor: 0.5,
 			},
-			shouldPanic:   true,
-			expectedPanic: "invalid throughput bounds",
+			shouldError:   true,
+			expectedError: "invalid throughput bounds",
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt // capture loop variable
 		t.Run(tt.name, func(t *testing.T) {
-			defer func() {
-				if r := recover(); r != nil {
-					if !tt.shouldPanic {
-						t.Errorf("unexpected panic: %v", r)
-						return
-					}
-					// Verify panic message contains expected text
-					panicMsg := fmt.Sprintf("%v", r)
-					if tt.expectedPanic != "" && !strings.Contains(panicMsg, tt.expectedPanic) {
-						t.Errorf("panic message should contain %q, got: %v", tt.expectedPanic, r)
-					}
-				} else if tt.shouldPanic {
-					t.Error("expected panic but didn't get one")
+			_, err := NewAdaptiveThrottler(&tt.config)
+			if tt.shouldError {
+				if err == nil {
+					t.Error("expected error but didn't get one")
+					return
 				}
-			}()
-			NewAdaptiveThrottler(tt.config)
+				// Verify error message contains expected text
+				if tt.expectedError != "" && !strings.Contains(err.Error(), tt.expectedError) {
+					t.Errorf("error message should contain %q, got: %v", tt.expectedError, err)
+				}
+			} else if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
 		})
 	}
 }
@@ -603,7 +600,10 @@ func TestAdaptiveThrottler_CloseClosesOutputEvenIfInputOpen(t *testing.T) {
 
 func TestAdaptiveThrottler_CloseStopsBackgroundLoops(t *testing.T) {
 	config := DefaultAdaptiveThrottlerConfig()
-	at := NewAdaptiveThrottler(config)
+	at, err := NewAdaptiveThrottler(&config)
+	if err != nil {
+		t.Fatalf("failed to create adaptive throttler: %v", err)
+	}
 
 	at.Close()
 
@@ -621,7 +621,10 @@ func TestAdaptiveThrottler_CPUUsageMode(t *testing.T) {
 	config := DefaultAdaptiveThrottlerConfig()
 	config.CPUUsageMode = CPUUsageModeMeasured
 
-	at := NewAdaptiveThrottler(config)
+	at, err := NewAdaptiveThrottler(&config)
+	if err != nil {
+		t.Fatalf("failed to create adaptive throttler: %v", err)
+	}
 	defer func() {
 		at.Close()
 		time.Sleep(10 * time.Millisecond)
@@ -642,7 +645,10 @@ func TestAdaptiveThrottler_CPUUsageMode(t *testing.T) {
 
 func TestAdaptiveThrottler_GetCurrentRate(t *testing.T) {
 	config := DefaultAdaptiveThrottlerConfig()
-	at := NewAdaptiveThrottler(config)
+	at, err := NewAdaptiveThrottler(&config)
+	if err != nil {
+		t.Fatalf("failed to create adaptive throttler: %v", err)
+	}
 	defer func() {
 		at.Close()
 		time.Sleep(10 * time.Millisecond)
@@ -659,7 +665,10 @@ func TestAdaptiveThrottler_GetCurrentRate(t *testing.T) {
 
 func TestAdaptiveThrottler_GetResourceStats(t *testing.T) {
 	config := DefaultAdaptiveThrottlerConfig()
-	at := NewAdaptiveThrottler(config)
+	at, err := NewAdaptiveThrottler(&config)
+	if err != nil {
+		t.Fatalf("failed to create adaptive throttler: %v", err)
+	}
 	defer func() {
 		at.Close()
 		time.Sleep(10 * time.Millisecond)
@@ -739,7 +748,10 @@ func TestAdaptiveThrottler_BufferBackpressure(t *testing.T) {
 
 func BenchmarkAdaptiveThrottler_GetResourceStats(b *testing.B) {
 	config := DefaultAdaptiveThrottlerConfig()
-	at := NewAdaptiveThrottler(config)
+	at, err := NewAdaptiveThrottler(&config)
+	if err != nil {
+		b.Fatalf("failed to create adaptive throttler: %v", err)
+	}
 	defer func() {
 		at.Close()
 		time.Sleep(10 * time.Millisecond)
@@ -936,7 +948,10 @@ func TestAdaptiveThrottler_CustomMemoryReader(t *testing.T) {
 		return customMemoryPercent, nil
 	}
 
-	at := NewAdaptiveThrottler(config)
+	at, err := NewAdaptiveThrottler(&config)
+	if err != nil {
+		t.Fatalf("failed to create adaptive throttler: %v", err)
+	}
 	defer at.Close()
 
 	// Allow some time for stats collection

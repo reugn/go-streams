@@ -20,8 +20,8 @@ type AdaptiveThrottlerConfig struct {
 	MinThroughput int
 	MaxThroughput int
 
-	// Resource monitoring
-	SampleInterval time.Duration // How often to sample resources
+	// How often to sample resources
+	SampleInterval time.Duration
 
 	// Buffer configuration
 	BufferSize int
@@ -41,7 +41,7 @@ type AdaptiveThrottlerConfig struct {
 	// CPUUsageModeHeuristic: Estimates CPU usage using a simple heuristic (goroutine count), suitable for platforms
 	// where accurate process CPU measurement is not supported.
 	//
-	// CPUUsageModeMeasured: Attempts to measure actual process CPU usage via gopsutil
+	// CPUUsageModeMeasured: Attempts to measure actual process CPU usage natively
 	// (when supported), providing more accurate CPU usage readings.
 	CPUUsageMode CPUUsageMode
 
@@ -72,16 +72,19 @@ func DefaultAdaptiveThrottlerConfig() AdaptiveThrottlerConfig {
 		BufferSize:          500,                    // Match max throughput for 1 second buffer at max rate
 		AdaptationFactor:    0.15,                   // Slightly more conservative adaptation
 		SmoothTransitions:   true,                   // Keep smooth transitions enabled by default
-		CPUUsageMode:        CPUUsageModeMeasured,   // Use actual process CPU usage via gopsutil
+		CPUUsageMode:        CPUUsageModeMeasured,   // Use actual process CPU usage natively
 		HysteresisBuffer:    5.0,                    // Prevent oscillations around threshold
 		MaxRateChangeFactor: 0.3,                    // More conservative rate changes
 	}
 }
 
-// resourceMonitor defines the interface for resource monitoring
+// ResourceMonitor defines the interface for resource monitoring
 type resourceMonitor interface {
+	// GetStats returns the current resource statistics
 	GetStats() ResourceStats
+	// IsResourceConstrained returns true if resources are above thresholds
 	IsResourceConstrained() bool
+	// Close closes the resource monitor
 	Close()
 }
 
@@ -120,49 +123,47 @@ type AdaptiveThrottler struct {
 	stopOnce sync.Once
 }
 
-// Validate checks that the configuration is valid and returns an error if not
-func (c *AdaptiveThrottlerConfig) Validate() error {
-	if c.MaxMemoryPercent <= 0 || c.MaxMemoryPercent > 100 {
-		return fmt.Errorf("invalid MaxMemoryPercent: %f", c.MaxMemoryPercent)
-	}
-	if c.MinThroughput < 1 || c.MaxThroughput < c.MinThroughput {
-		return fmt.Errorf("invalid throughput bounds: min=%d, max=%d", c.MinThroughput, c.MaxThroughput)
-	}
-	if c.AdaptationFactor <= 0 || c.AdaptationFactor >= 1 {
-		return fmt.Errorf("invalid AdaptationFactor: %f, must be in (0, 1)", c.AdaptationFactor)
-	}
-	if c.MaxCPUPercent <= 0 || c.MaxCPUPercent > 100 {
-		return fmt.Errorf("invalid MaxCPUPercent: %f", c.MaxCPUPercent)
-	}
-	if c.BufferSize < 1 {
-		return fmt.Errorf("invalid BufferSize: %d", c.BufferSize)
-	}
-	if c.SampleInterval <= 0 {
-		return fmt.Errorf("invalid SampleInterval: %v", c.SampleInterval)
-	}
-	if c.HysteresisBuffer < 0 {
-		return fmt.Errorf("invalid HysteresisBuffer: %f", c.HysteresisBuffer)
-	}
-	if c.MaxRateChangeFactor <= 0 || c.MaxRateChangeFactor > 1 {
-		return fmt.Errorf("invalid MaxRateChangeFactor: %f, must be in (0, 1]", c.MaxRateChangeFactor)
-	}
-	return nil
-}
-
-// Verify AdaptiveThrottler satisfies the Flow interface
 var _ streams.Flow = (*AdaptiveThrottler)(nil)
 
 // NewAdaptiveThrottler creates a new adaptive throttler
-func NewAdaptiveThrottler(config AdaptiveThrottlerConfig) *AdaptiveThrottler {
-	if err := config.Validate(); err != nil {
-		panic(fmt.Sprintf("invalid config: %v", err))
+// If config is nil, default configuration will be used.
+func NewAdaptiveThrottler(config *AdaptiveThrottlerConfig) (*AdaptiveThrottler, error) {
+	if config == nil {
+		defaultConfig := DefaultAdaptiveThrottlerConfig()
+		config = &defaultConfig
+	}
+
+	// Validate configuration
+	if config.MaxMemoryPercent <= 0 || config.MaxMemoryPercent > 100 {
+		return nil, fmt.Errorf("invalid MaxMemoryPercent: %f", config.MaxMemoryPercent)
+	}
+	if config.MinThroughput < 1 || config.MaxThroughput < config.MinThroughput {
+		return nil, fmt.Errorf("invalid throughput bounds: min=%d, max=%d", config.MinThroughput, config.MaxThroughput)
+	}
+	if config.AdaptationFactor <= 0 || config.AdaptationFactor >= 1 {
+		return nil, fmt.Errorf("invalid AdaptationFactor: %f, must be in (0, 1)", config.AdaptationFactor)
+	}
+	if config.MaxCPUPercent <= 0 || config.MaxCPUPercent > 100 {
+		return nil, fmt.Errorf("invalid MaxCPUPercent: %f", config.MaxCPUPercent)
+	}
+	if config.BufferSize < 1 {
+		return nil, fmt.Errorf("invalid BufferSize: %d", config.BufferSize)
+	}
+	if config.SampleInterval <= 0 {
+		return nil, fmt.Errorf("invalid SampleInterval: %v", config.SampleInterval)
+	}
+	if config.HysteresisBuffer < 0 {
+		return nil, fmt.Errorf("invalid HysteresisBuffer: %f", config.HysteresisBuffer)
+	}
+	if config.MaxRateChangeFactor <= 0 || config.MaxRateChangeFactor > 1 {
+		return nil, fmt.Errorf("invalid MaxRateChangeFactor: %f, must be in (0, 1]", config.MaxRateChangeFactor)
 	}
 
 	// Initialize with max throughput
 	initialRate := int64(config.MaxThroughput)
 
 	at := &AdaptiveThrottler{
-		config: config,
+		config: *config,
 		monitor: NewResourceMonitor(
 			config.SampleInterval,
 			config.MaxMemoryPercent,
@@ -190,7 +191,7 @@ func NewAdaptiveThrottler(config AdaptiveThrottlerConfig) *AdaptiveThrottler {
 	// Start buffering goroutine
 	go at.buffer()
 
-	return at
+	return at, nil
 }
 
 // adaptRateLoop periodically adapts the throughput rate based on resource availability

@@ -215,6 +215,7 @@ func (at *AdaptiveThrottler) adaptRate() {
 	defer at.adaptMu.Unlock()
 
 	stats := at.monitor.GetStats()
+	// constrained indicates if memory or CPU usage exceeds configured thresholds
 	constrained := stats.MemoryUsedPercent > at.config.MaxMemoryPercent ||
 		stats.CPUUsagePercent > at.config.MaxCPUPercent
 

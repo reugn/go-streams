@@ -38,11 +38,23 @@ func main() {
 
 	go produceBurst(in, 250)
 
+	// Use a variable to prevent compiler optimization of CPU work
+	var cpuWorkChecksum uint64
+
 	for element := range sink.Out {
 		fmt.Printf("consumer received %v\n", element)
 		elementsProcessed.Add(1) // Track processed elements for memory pressure simulation
+
+		// Perform CPU-intensive work that can't be optimized away
+		// This ensures Windows GetProcessTimes can detect CPU usage
+		// (Windows timer resolution is ~15.625ms, so we need at least 50-100ms of work)
+		burnCPU(50*time.Millisecond, &cpuWorkChecksum)
+
 		time.Sleep(25 * time.Millisecond)
 	}
+
+	// Print checksum to ensure CPU work wasn't optimized away
+	fmt.Printf("CPU work checksum: %d\n", cpuWorkChecksum)
 
 	fmt.Println("adaptive throttling pipeline completed")
 }
@@ -104,6 +116,17 @@ func produceBurst(in chan<- any, total int) {
 		}
 
 		time.Sleep(time.Duration(2+rand.Intn(5)) * time.Millisecond)
+	}
+}
+
+// burnCPU performs CPU-intensive work for the specified duration
+// The checksum parameter prevents the compiler from optimizing away the work
+func burnCPU(duration time.Duration, checksum *uint64) {
+	start := time.Now()
+	for time.Since(start) < duration {
+		for i := 0; i < 1000; i++ {
+			*checksum += uint64(i * i)
+		}
 	}
 }
 

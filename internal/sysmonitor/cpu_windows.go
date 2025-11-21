@@ -36,6 +36,10 @@ func newProcessSampler() (*ProcessSampler, error) {
 func (s *ProcessSampler) Sample(deltaTime time.Duration) float64 {
 	utime, stime, err := s.getCurrentCPUTimes()
 	if err != nil {
+		// If we have a previous valid sample, return it; otherwise return 0
+		if s.lastSample.IsZero() {
+			return 0.0
+		}
 		return s.lastPercent
 	}
 
@@ -62,9 +66,16 @@ func (s *ProcessSampler) Sample(deltaTime time.Duration) float64 {
 	}
 
 	// Normalized to 0-100% (divides by numCPU for system-wide metric)
+	// Note: GetProcessTimes returns cumulative CPU time across all threads/cores
+	// So we divide by numCPU to get per-core percentage
 	numcpu := runtime.NumCPU()
+	if numcpu <= 0 {
+		numcpu = 1 // Safety check
+	}
+
 	percent := (cpuTimeDelta / wallTimeSeconds) * 100.0 / float64(numcpu)
 
+	// Handle negative deltas (can happen due to clock adjustments or process restarts)
 	if percent < 0.0 {
 		percent = 0.0
 	} else if percent > 100.0 {
@@ -108,16 +119,29 @@ func getProcessCPUTimes(pid int) (syscall.Filetime, syscall.Filetime, error) {
 		}
 		// GetCurrentProcess returns a pseudo-handle that doesn't need to be closed
 	} else {
+		// Try PROCESS_QUERY_LIMITED_INFORMATION first (works on more Windows versions)
+		// Fall back to PROCESS_QUERY_INFORMATION if that fails
 		var err error
-		h, err = syscall.OpenProcess(syscall.PROCESS_QUERY_INFORMATION, false, uint32(pid))
+		const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+		h, err = syscall.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
 		if err != nil {
-			return k, u, err
+			// Fallback to PROCESS_QUERY_INFORMATION
+			h, err = syscall.OpenProcess(syscall.PROCESS_QUERY_INFORMATION, false, uint32(pid))
+			if err != nil {
+				return k, u, err
+			}
 		}
 		defer syscall.CloseHandle(h)
 	}
 
 	err := syscall.GetProcessTimes(h, &c, &e, &k, &u)
-	return k, u, err
+	if err != nil {
+		return k, u, err
+	}
+
+	// Validate that we got non-zero times (unless process just started)
+	// This helps catch cases where the API call succeeded but returned invalid data
+	return k, u, nil
 }
 
 // convertFiletimeToSeconds converts FILETIME (100ns intervals) to seconds

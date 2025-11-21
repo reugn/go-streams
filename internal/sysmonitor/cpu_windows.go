@@ -95,13 +95,28 @@ func (s *ProcessSampler) IsInitialized() bool {
 // getProcessCPUTimes retrieves CPU times via GetProcessTimes (returns FILETIME)
 func getProcessCPUTimes(pid int) (syscall.Filetime, syscall.Filetime, error) {
 	var c, e, k, u syscall.Filetime
-	h, err := syscall.OpenProcess(syscall.PROCESS_QUERY_INFORMATION, false, uint32(pid))
-	if err != nil {
-		return k, u, err
-	}
-	defer syscall.CloseHandle(h)
 
-	err = syscall.GetProcessTimes(h, &c, &e, &k, &u)
+	// For the current process, use GetCurrentProcess() which returns a pseudo-handle
+	// that doesn't need to be opened and is more reliable
+	currentPid := os.Getpid()
+	var h syscall.Handle
+	if pid == currentPid {
+		var err error
+		h, err = syscall.GetCurrentProcess()
+		if err != nil {
+			return k, u, err
+		}
+		// GetCurrentProcess returns a pseudo-handle that doesn't need to be closed
+	} else {
+		var err error
+		h, err = syscall.OpenProcess(syscall.PROCESS_QUERY_INFORMATION, false, uint32(pid))
+		if err != nil {
+			return k, u, err
+		}
+		defer syscall.CloseHandle(h)
+	}
+
+	err := syscall.GetProcessTimes(h, &c, &e, &k, &u)
 	return k, u, err
 }
 

@@ -37,7 +37,7 @@ type ResourceMonitor struct {
 	cpuMode         CPUUsageMode
 
 	// Current stats (atomic for thread-safe reads)
-	stats atomic.Value // *ResourceStats
+	stats atomic.Pointer[ResourceStats]
 
 	// CPU sampling
 	sampler sysmonitor.ProcessCPUSampler
@@ -121,7 +121,7 @@ func (rm *ResourceMonitor) GetStats() ResourceStats {
 	if stats == nil {
 		return ResourceStats{}
 	}
-	return *stats.(*ResourceStats)
+	return *stats
 }
 
 // IsResourceConstrained returns true if resources are above thresholds

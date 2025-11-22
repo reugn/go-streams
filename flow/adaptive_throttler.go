@@ -61,7 +61,10 @@ type AdaptiveThrottlerConfig struct {
 	// Default: 0.3 (max 30% change per cycle)
 	MaxRateChangeFactor float64
 
-	// MemoryReader provides memory usage percentage for containerized deployments.
+	// MemoryReader is a user-provided custom function that returns memory usage percentage.
+    // This can be particularly useful for containerized deployments or other environments
+    // where standard system memory readings may not accurately reflect container-specific
+    // usage.
 	// If nil, system memory will be read via mem.VirtualMemory().
 	// Must return memory used percentage (0-100).
 	MemoryReader func() (float64, error)

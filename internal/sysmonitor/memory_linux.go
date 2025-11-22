@@ -162,7 +162,7 @@ func readCgroupMemoryWithFS(fs FileSystem, config cgroupMemoryConfig) (SystemMem
 func readCgroupValueWithFS(fs FileSystem, path string, checkUnlimited bool) (uint64, error) {
 	data, err := fs.ReadFile(path)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to read file %s: %w", path, err)
 	}
 	str := strings.TrimSpace(string(data))
 	if str == "max" {
@@ -182,7 +182,7 @@ func readCgroupValueWithFS(fs FileSystem, path string, checkUnlimited bool) (uin
 func readCgroupStatWithFS(fs FileSystem, path string, key string) (uint64, error) {
 	f, err := fs.Open(path)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to open file %s: %w", path, err)
 	}
 	defer f.Close()
 

@@ -115,7 +115,7 @@ func getProcessCPUTimes(pid int) (syscall.Filetime, syscall.Filetime, error) {
 		var err error
 		h, err = syscall.GetCurrentProcess()
 		if err != nil {
-			return k, u, err
+			return k, u, fmt.Errorf("failed to get current process handle: %w", err)
 		}
 		// GetCurrentProcess returns a pseudo-handle that doesn't need to be closed
 	} else {
@@ -128,7 +128,7 @@ func getProcessCPUTimes(pid int) (syscall.Filetime, syscall.Filetime, error) {
 			// Fallback to PROCESS_QUERY_INFORMATION
 			h, err = syscall.OpenProcess(syscall.PROCESS_QUERY_INFORMATION, false, uint32(pid))
 			if err != nil {
-				return k, u, err
+				return k, u, fmt.Errorf("failed to open process %d: %w", pid, err)
 			}
 		}
 		defer syscall.CloseHandle(h)
@@ -136,7 +136,7 @@ func getProcessCPUTimes(pid int) (syscall.Filetime, syscall.Filetime, error) {
 
 	err := syscall.GetProcessTimes(h, &c, &e, &k, &u)
 	if err != nil {
-		return k, u, err
+		return k, u, fmt.Errorf("failed to get process times for PID %d: %w", pid, err)
 	}
 
 	// Validate that we got non-zero times (unless process just started)
@@ -154,7 +154,7 @@ func convertFiletimeToSeconds(ft syscall.Filetime) float64 {
 func (s *ProcessSampler) getCurrentCPUTimes() (utime, stime float64, err error) {
 	k, u, err := getProcessCPUTimes(s.pid)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, fmt.Errorf("failed to get CPU times for process %d: %w", s.pid, err)
 	}
 
 	utime = convertFiletimeToSeconds(u)

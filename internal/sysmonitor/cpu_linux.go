@@ -106,15 +106,16 @@ func (s *ProcessSampler) IsInitialized() bool {
 
 // readProcessTimes reads CPU times from /proc/<pid>/stat (returns ticks)
 func (s *ProcessSampler) readProcessTimes() (utime, stime int64, err error) {
-	file, err := os.Open(fmt.Sprintf("/proc/%d/stat", s.pid))
+	path := fmt.Sprintf("/proc/%d/stat", s.pid)
+	file, err := os.Open(path)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, fmt.Errorf("failed to open file %s: %w", path, err)
 	}
 	defer file.Close()
 
 	content, err := io.ReadAll(file)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, fmt.Errorf("failed to read file %s: %w", path, err)
 	}
 
 	fields := strings.Fields(string(content))
@@ -127,12 +128,12 @@ func (s *ProcessSampler) readProcessTimes() (utime, stime int64, err error) {
 	// utime=field[13], stime=field[14]
 	utime, err = strconv.ParseInt(fields[13], 10, 64)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, fmt.Errorf("failed to parse utime from field[13] in /proc/%d/stat: %w", s.pid, err)
 	}
 
 	stime, err = strconv.ParseInt(fields[14], 10, 64)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, fmt.Errorf("failed to parse stime from field[14] in /proc/%d/stat: %w", s.pid, err)
 	}
 
 	return utime, stime, nil

@@ -3,6 +3,7 @@
 package sysmonitor
 
 import (
+	"fmt"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -13,7 +14,6 @@ var (
 	procGlobalMemoryStatusEx = kernel32.NewProc("GlobalMemoryStatusEx")
 
 	memoryReader = getSystemMemoryWindows
-	// memoryReaderMu protects concurrent access to memoryReader
 	memoryReaderMu sync.RWMutex
 )
 
@@ -45,7 +45,7 @@ func getSystemMemoryWindows() (SystemMemory, error) {
 
 	// If the function fails, the return value is zero.
 	if ret == 0 {
-		return SystemMemory{}, err
+		return SystemMemory{}, fmt.Errorf("failed to get system memory status via GlobalMemoryStatusEx: %w", err)
 	}
 
 	return SystemMemory{

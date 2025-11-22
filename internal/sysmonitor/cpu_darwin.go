@@ -101,7 +101,7 @@ func (s *ProcessSampler) readProcessTimesDarwin() (utime, stime float64, err err
 	var rusage syscall.Rusage
 	err = syscall.Getrusage(syscall.RUSAGE_SELF, &rusage)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, fmt.Errorf("failed to get process resource usage: %w", err)
 	}
 
 	utime = float64(rusage.Utime.Sec) + float64(rusage.Utime.Usec)/1e6

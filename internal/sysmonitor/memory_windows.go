@@ -44,7 +44,7 @@ func getSystemMemoryWindows() (SystemMemory, error) {
 	ret, _, err := procGlobalMemoryStatusEx.Call(uintptr(unsafe.Pointer(&memStatus)))
 
 	// If the function fails, the return value is zero.
-	if ret == 0 {
+	if ret == 0 || err != nil {
 		return SystemMemory{}, fmt.Errorf("failed to get system memory status via GlobalMemoryStatusEx: %w", err)
 	}
 

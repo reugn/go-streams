@@ -190,7 +190,7 @@ func (rm *ResourceMonitor) memoryUsagePercent(
 			available = sysStats.Total
 		}
 
-		// Defensive programming: avoid division by zero
+		// avoid division by zero
 		if sysStats.Total == 0 {
 			return 0
 		}

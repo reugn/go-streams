@@ -13,7 +13,7 @@ require (
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/hashicorp/raft v1.7.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
-	github.com/nats-io/nats-server/v2 v2.10.18 // indirect
+	github.com/nats-io/nats-server/v2 v2.10.27 // indirect
 	github.com/nats-io/nats-streaming-server v0.25.6 // indirect
 	github.com/nats-io/nkeys v0.4.11 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect

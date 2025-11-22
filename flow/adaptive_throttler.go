@@ -63,7 +63,7 @@ type AdaptiveThrottlerConfig struct {
 
 	// MemoryReader provides memory usage percentage for containerized deployments.
 	// If nil, system memory will be read via mem.VirtualMemory().
-	// Should return memory used percentage (0-100).
+	// Must return memory used percentage (0-100).
 	MemoryReader func() (float64, error)
 }
 

@@ -31,8 +31,10 @@ type AdaptiveThrottlerConfig struct {
 	// How often to sample resources
 	SampleInterval time.Duration
 
-	// Buffer configuration
-	BufferSize int
+	// Buffer size to hold incoming elements
+	BufferSize    int
+	// Maximum allowed buffer size to prevent unbounded memory allocation
+	MaxBufferSize int
 
 	// Adaptation parameters (How aggressively to adapt. 0.1 = slow, 0.5 = fast).
 	//
@@ -81,6 +83,7 @@ func DefaultAdaptiveThrottlerConfig() *AdaptiveThrottlerConfig {
 		MaxThroughput:       500,                    // More conservative maximum
 		SampleInterval:      200 * time.Millisecond, // Less frequent sampling
 		BufferSize:          500,                    // Match max throughput for 1 second buffer at max rate
+		MaxBufferSize:       10000,                  // Reasonable maximum to prevent unbounded memory allocation
 		AdaptationFactor:    0.15,                   // Slightly more conservative adaptation
 		SmoothTransitions:   true,                   // Keep smooth transitions enabled by default
 		CPUUsageMode:        CPUUsageModeMeasured,   // Use actual process CPU usage natively
@@ -157,6 +160,12 @@ func NewAdaptiveThrottler(config *AdaptiveThrottlerConfig) (*AdaptiveThrottler, 
 	}
 	if config.BufferSize < 1 {
 		return nil, fmt.Errorf("invalid BufferSize: %d", config.BufferSize)
+	}
+	if config.MaxBufferSize < 1 {
+		return nil, fmt.Errorf("invalid MaxBufferSize: %d", config.MaxBufferSize)
+	}
+	if config.BufferSize > config.MaxBufferSize {
+		return nil, fmt.Errorf("BufferSize %d exceeds MaxBufferSize %d", config.BufferSize, config.MaxBufferSize)
 	}
 	if config.SampleInterval < minSampleInterval {
 		return nil, fmt.Errorf(

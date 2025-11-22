@@ -82,6 +82,7 @@ func TestAdaptiveThrottler_ConfigValidation(t *testing.T) {
 				MaxThroughput:       100,
 				SampleInterval:      100 * time.Millisecond,
 				BufferSize:          100,
+				MaxBufferSize:       1000,
 				AdaptationFactor:    0.2,
 				HysteresisBuffer:    5.0,
 				MaxRateChangeFactor: 0.5,
@@ -98,6 +99,7 @@ func TestAdaptiveThrottler_ConfigValidation(t *testing.T) {
 				MaxThroughput:       100,
 				SampleInterval:      100 * time.Millisecond,
 				BufferSize:          100,
+				MaxBufferSize:       1000,
 				AdaptationFactor:    0.2,
 				HysteresisBuffer:    5.0,
 				MaxRateChangeFactor: 0.5,
@@ -114,12 +116,47 @@ func TestAdaptiveThrottler_ConfigValidation(t *testing.T) {
 				MaxThroughput:       50, // Invalid
 				SampleInterval:      100 * time.Millisecond,
 				BufferSize:          100,
+				MaxBufferSize:       1000,
 				AdaptationFactor:    0.2,
 				HysteresisBuffer:    5.0,
 				MaxRateChangeFactor: 0.5,
 			},
 			shouldError:   true,
 			expectedError: "invalid throughput bounds",
+		},
+		{
+			name: "invalid MaxBufferSize",
+			config: AdaptiveThrottlerConfig{
+				MaxMemoryPercent:    80.0,
+				MaxCPUPercent:       70.0,
+				MinThroughput:       10,
+				MaxThroughput:       100,
+				SampleInterval:      100 * time.Millisecond,
+				BufferSize:          100,
+				MaxBufferSize:       -1, // Invalid: negative value
+				AdaptationFactor:    0.2,
+				HysteresisBuffer:    5.0,
+				MaxRateChangeFactor: 0.5,
+			},
+			shouldError:   true,
+			expectedError: "invalid MaxBufferSize",
+		},
+		{
+			name: "BufferSize exceeds MaxBufferSize",
+			config: AdaptiveThrottlerConfig{
+				MaxMemoryPercent:    80.0,
+				MaxCPUPercent:       70.0,
+				MinThroughput:       10,
+				MaxThroughput:       100,
+				SampleInterval:      100 * time.Millisecond,
+				BufferSize:          1000,
+				MaxBufferSize:       500, // Invalid: BufferSize > MaxBufferSize
+				AdaptationFactor:    0.2,
+				HysteresisBuffer:    5.0,
+				MaxRateChangeFactor: 0.5,
+			},
+			shouldError:   true,
+			expectedError: "BufferSize 1000 exceeds MaxBufferSize 500",
 		},
 	}
 

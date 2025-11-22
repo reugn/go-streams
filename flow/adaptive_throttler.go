@@ -126,7 +126,6 @@ type AdaptiveThrottler struct {
 	done        chan struct{}
 
 	// Rate adaptation
-	adaptMu        sync.Mutex
 	lastAdaptation time.Time
 
 	stopOnce sync.Once
@@ -219,9 +218,6 @@ func (at *AdaptiveThrottler) adaptRateLoop() {
 
 // adaptRate adjusts the throughput rate based on current resource usage
 func (at *AdaptiveThrottler) adaptRate() {
-	at.adaptMu.Lock()
-	defer at.adaptMu.Unlock()
-
 	stats := at.monitor.GetStats()
 	// constrained indicates if memory or CPU usage exceeds configured thresholds
 	constrained := stats.MemoryUsedPercent > at.config.MaxMemoryPercent ||

@@ -98,7 +98,7 @@ func TestReadCgroupValueWithFS(t *testing.T) {
 		"/test/file": "123456\n",
 	}
 
-	value, err := readCgroupValueWithFS(mockFS, "/test/file")
+	value, err := readCgroupValueWithFS(mockFS, "/test/file", false)
 	if err != nil {
 		t.Fatalf("readCgroupValueWithFS failed: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestReadCgroupValueWithFS(t *testing.T) {
 
 	// Test "max" value (unlimited)
 	mockFS["/test/max"] = "max\n"
-	_, err = readCgroupValueWithFS(mockFS, "/test/max")
+	_, err = readCgroupValueWithFS(mockFS, "/test/max", false)
 	if err == nil {
 		t.Error("Expected error for 'max' value")
 	}

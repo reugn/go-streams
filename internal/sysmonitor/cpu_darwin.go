@@ -11,12 +11,6 @@ import (
 	"time"
 )
 
-// cpuTimesStat holds CPU time in seconds
-type cpuTimesStat struct {
-	User   float64
-	System float64
-}
-
 // ProcessSampler samples CPU usage for the current process
 type ProcessSampler struct {
 	pid         int

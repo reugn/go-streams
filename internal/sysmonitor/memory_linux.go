@@ -14,28 +14,28 @@ import (
 )
 
 var (
-	memoryReader MemoryReader
-	fileSystem   FileSystem
-	memoryReaderMu sync.RWMutex
+	memoryReader     MemoryReader
+	fileSystem       FileSystem
+	memoryReaderMu   sync.RWMutex
+	memoryReaderOnce sync.Once
 )
 
 // GetSystemMemory returns the current system memory statistics.
 // This function auto-detects the environment (cgroup v2, v1, or host)
 // and returns appropriate memory information.
 func GetSystemMemory() (SystemMemory, error) {
-	memoryReaderMu.RLock()
-	reader := memoryReader
-	memoryReaderMu.RUnlock()
-
-	if reader == nil {
+	memoryReaderOnce.Do(func() {
 		memoryReaderMu.Lock()
 		if memoryReader == nil {
 			memoryReader = readSystemMemoryAuto
 			fileSystem = OSFileSystem{}
 		}
-		reader = memoryReader
 		memoryReaderMu.Unlock()
-	}
+	})
+
+	memoryReaderMu.RLock()
+	reader := memoryReader
+	memoryReaderMu.RUnlock()
 
 	return reader()
 }
@@ -81,7 +81,6 @@ var (
 	}
 )
 
-
 // readSystemMemoryAuto detects the environment once and "upgrades" the reader
 func readSystemMemoryAuto() (SystemMemory, error) {
 	if m, err := readCgroupMemoryWithFS(fileSystem, cgroupV2Config); err == nil {
@@ -124,19 +123,14 @@ func makeCgroupV1Reader(fs FileSystem) MemoryReader {
 }
 
 func readCgroupMemoryWithFS(fs FileSystem, config cgroupMemoryConfig) (SystemMemory, error) {
-	usage, err := readCgroupValueWithFS(fs, config.usagePath)
+	usage, err := readCgroupValueWithFS(fs, config.usagePath, false)
 	if err != nil {
 		return SystemMemory{}, fmt.Errorf("failed to read cgroup %s memory usage: %w", config.version, err)
 	}
 
-	limit, err := readCgroupValueWithFS(fs, config.limitPath)
+	limit, err := readCgroupValueWithFS(fs, config.limitPath, config.checkUnlimited)
 	if err != nil {
 		return SystemMemory{}, fmt.Errorf("failed to read cgroup %s memory limit: %w", config.version, err)
-	}
-
-	// Check for "unlimited" (random huge number in V1)
-	if config.checkUnlimited && limit > (1<<60) {
-		return SystemMemory{}, os.ErrNotExist
 	}
 
 	// Parse memory.stat to find reclaimable memory
@@ -165,18 +159,22 @@ func readCgroupMemoryWithFS(fs FileSystem, config cgroupMemoryConfig) (SystemMem
 	}, nil
 }
 
-func readCgroupValueWithFS(fs FileSystem, path string) (uint64, error) {
+func readCgroupValueWithFS(fs FileSystem, path string, checkUnlimited bool) (uint64, error) {
 	data, err := fs.ReadFile(path)
 	if err != nil {
 		return 0, err
 	}
 	str := strings.TrimSpace(string(data))
 	if str == "max" {
-		return 0, os.ErrNotExist
+		return 0, fmt.Errorf("unlimited memory limit")
 	}
 	val, err := strconv.ParseUint(str, 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("failed to parse value %q from %s: %w", str, path, err)
+	}
+	// Check for "unlimited" (random huge number in V1)
+	if checkUnlimited && val > (1<<60) {
+		return 0, fmt.Errorf("unlimited memory limit")
 	}
 	return val, nil
 }
@@ -223,8 +221,8 @@ func readSystemMemory() (SystemMemory, error) {
 func parseMemInfo(r io.Reader) (SystemMemory, error) {
 	scanner := bufio.NewScanner(r)
 
-	var total, available uint64
-	found := 0
+	var total, available, free, cached uint64
+	memAvailableFound := false
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -246,13 +244,17 @@ func parseMemInfo(r io.Reader) (SystemMemory, error) {
 		switch key {
 		case "MemTotal":
 			total = value
-			found++
 		case "MemAvailable":
 			available = value
-			found++
+			memAvailableFound = true
+		case "MemFree":
+			free = value
+		case "Cached":
+			cached = value
 		}
 
-		if found == 2 {
+		// Early exit if we have MemTotal and MemAvailable (kernel 3.14+)
+		if total > 0 && memAvailableFound {
 			break
 		}
 	}
@@ -261,10 +263,17 @@ func parseMemInfo(r io.Reader) (SystemMemory, error) {
 		return SystemMemory{}, fmt.Errorf("error reading meminfo: %w", err)
 	}
 
-	if found != 2 {
-		return SystemMemory{}, fmt.Errorf(
-			"could not find MemTotal and MemAvailable in /proc/meminfo (found %d of 2 required fields)",
-			found)
+	if total == 0 {
+		return SystemMemory{}, fmt.Errorf("could not find MemTotal in /proc/meminfo")
+	}
+
+	// Fallback calculation for MemAvailable
+	if !memAvailableFound {
+		available = free + cached
+		if available == 0 {
+			return SystemMemory{}, fmt.Errorf(
+				"could not find MemAvailable in /proc/meminfo and fallback calculation failed (MemFree and Cached not found or both zero)")
+		}
 	}
 
 	return SystemMemory{

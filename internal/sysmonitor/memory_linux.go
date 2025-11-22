@@ -16,7 +16,6 @@ import (
 var (
 	memoryReader MemoryReader
 	fileSystem   FileSystem
-	// memoryReaderMu protects concurrent access to memoryReader
 	memoryReaderMu sync.RWMutex
 )
 
@@ -41,18 +40,60 @@ func GetSystemMemory() (SystemMemory, error) {
 	return reader()
 }
 
+// SetMemoryReader replaces the current memory reader (for testing)
+func SetMemoryReader(reader MemoryReader) func() {
+	memoryReaderMu.Lock()
+	prev := memoryReader
+	memoryReader = reader
+	memoryReaderMu.Unlock()
+	return func() {
+		memoryReaderMu.Lock()
+		memoryReader = prev
+		memoryReaderMu.Unlock()
+	}
+}
+
+type cgroupMemoryConfig struct {
+	usagePath      string
+	limitPath      string
+	statPath       string
+	statKey        string
+	version        string
+	checkUnlimited bool
+}
+
+var (
+	cgroupV2Config = cgroupMemoryConfig{
+		usagePath:      "/sys/fs/cgroup/memory.current",
+		limitPath:      "/sys/fs/cgroup/memory.max",
+		statPath:       "/sys/fs/cgroup/memory.stat",
+		statKey:        "inactive_file",
+		version:        "v2",
+		checkUnlimited: false,
+	}
+	cgroupV1Config = cgroupMemoryConfig{
+		usagePath:      "/sys/fs/cgroup/memory/memory.usage_in_bytes",
+		limitPath:      "/sys/fs/cgroup/memory/memory.limit_in_bytes",
+		statPath:       "/sys/fs/cgroup/memory/memory.stat",
+		statKey:        "total_inactive_file",
+		version:        "v1",
+		checkUnlimited: true,
+	}
+)
+
+
 // readSystemMemoryAuto detects the environment once and "upgrades" the reader
 func readSystemMemoryAuto() (SystemMemory, error) {
-	if m, err := readCgroupV2Memory(); err == nil {
+	if m, err := readCgroupMemoryWithFS(fileSystem, cgroupV2Config); err == nil {
 		memoryReaderMu.Lock()
-		memoryReader = readCgroupV2Memory
+		memoryReader = makeCgroupV2Reader(fileSystem)
 		memoryReaderMu.Unlock()
 		return m, nil
 	}
 
-	if m, err := readCgroupV1Memory(); err == nil {
+	if m, err := readCgroupMemoryWithFS(fileSystem, cgroupV1Config); err == nil {
 		memoryReaderMu.Lock()
-		memoryReader = readCgroupV1Memory
+		memoryReader = makeCgroupV1Reader(fileSystem)
 		memoryReaderMu.Unlock()
 		return m, nil
 	}
@@ -68,71 +109,44 @@ func readSystemMemoryAuto() (SystemMemory, error) {
 	return m, nil
 }
 
-func readCgroupV2Memory() (SystemMemory, error) {
-	return readCgroupV2MemoryWithFS(fileSystem)
+// makeCgroupV2Reader creates a MemoryReader function for cgroup v2
+func makeCgroupV2Reader(fs FileSystem) MemoryReader {
+	return func() (SystemMemory, error) {
+		return readCgroupMemoryWithFS(fs, cgroupV2Config)
+	}
 }
 
-func readCgroupV2MemoryWithFS(fs FileSystem) (SystemMemory, error) {
-	usage, err := readCgroupValueWithFS(fs, "/sys/fs/cgroup/memory.current")
+// makeCgroupV1Reader creates a MemoryReader function for cgroup v1
+func makeCgroupV1Reader(fs FileSystem) MemoryReader {
+	return func() (SystemMemory, error) {
+		return readCgroupMemoryWithFS(fs, cgroupV1Config)
+	}
+}
+
+func readCgroupMemoryWithFS(fs FileSystem, config cgroupMemoryConfig) (SystemMemory, error) {
+	usage, err := readCgroupValueWithFS(fs, config.usagePath)
 	if err != nil {
-		return SystemMemory{}, fmt.Errorf("failed to read cgroup v2 memory usage: %w", err)
+		return SystemMemory{}, fmt.Errorf("failed to read cgroup %s memory usage: %w", config.version, err)
 	}
 
-	limit, err := readCgroupValueWithFS(fs, "/sys/fs/cgroup/memory.max")
+	limit, err := readCgroupValueWithFS(fs, config.limitPath)
 	if err != nil {
-		return SystemMemory{}, fmt.Errorf("failed to read cgroup v2 memory limit: %w", err)
+		return SystemMemory{}, fmt.Errorf("failed to read cgroup %s memory limit: %w", config.version, err)
 	}
 
-	// Parse memory.stat to find reclaimable memory (inactive_file)
-	inactiveFile, err := readCgroupStatWithFS(fs, "/sys/fs/cgroup/memory.stat", "inactive_file")
+	// Check for "unlimited" (random huge number in V1)
+	if config.checkUnlimited && limit > (1<<60) {
+		return SystemMemory{}, os.ErrNotExist
+	}
+
+	// Parse memory.stat to find reclaimable memory
+	inactiveFile, err := readCgroupStatWithFS(fs, config.statPath, config.statKey)
 	if err != nil {
 		inactiveFile = 0 // Default to 0 if unavailable
 	}
 
 	// Available = (Limit - Usage) + Reclaimable
 	// Note: If Limit - Usage is near zero, the kernel would reclaim inactive_file
-	// Handle case where usage exceeds limit
-	var available uint64
-	if usage > limit {
-		available = inactiveFile // Only reclaimable memory is available
-	} else {
-		available = (limit - usage) + inactiveFile
-	}
-
-	if available > limit {
-		available = limit
-	}
-
-	return SystemMemory{
-		Total:     limit,
-		Available: available,
-	}, nil
-}
-
-func readCgroupV1Memory() (SystemMemory, error) {
-	return readCgroupV1MemoryWithFS(fileSystem)
-}
-
-func readCgroupV1MemoryWithFS(fs FileSystem) (SystemMemory, error) {
-	usage, err := readCgroupValueWithFS(fs, "/sys/fs/cgroup/memory/memory.usage_in_bytes")
-	if err != nil {
-		return SystemMemory{}, fmt.Errorf("failed to read cgroup v1 memory usage: %w", err)
-	}
-
-	limit, err := readCgroupValueWithFS(fs, "/sys/fs/cgroup/memory/memory.limit_in_bytes")
-	if err != nil {
-		return SystemMemory{}, fmt.Errorf("failed to read cgroup v1 memory limit: %w", err)
-	}
-
-	// Check for "unlimited" (random huge number in V1)
-	if limit > (1 << 60) {
-		return SystemMemory{}, os.ErrNotExist
-	}
-
-	// Parse memory.stat for V1
-	// Note: total_inactive_file is optional - if unavailable, we continue with 0 (graceful degradation)
-	inactiveFile, _ := readCgroupStatWithFS(fs, "/sys/fs/cgroup/memory/memory.stat", "total_inactive_file")
-
 	// Handle case where usage exceeds limit
 	var available uint64
 	if usage > limit {
@@ -257,17 +271,4 @@ func parseMemInfo(r io.Reader) (SystemMemory, error) {
 		Total:     total,
 		Available: available,
 	}, nil
-}
-
-// SetMemoryReader replaces the current memory reader (for testing)
-func SetMemoryReader(reader MemoryReader) func() {
-	memoryReaderMu.Lock()
-	prev := memoryReader
-	memoryReader = reader
-	memoryReaderMu.Unlock()
-	return func() {
-		memoryReaderMu.Lock()
-		memoryReader = prev
-		memoryReaderMu.Unlock()
-	}
 }

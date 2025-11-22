@@ -52,9 +52,9 @@ func TestReadCgroupV2Memory(t *testing.T) {
 		"/sys/fs/cgroup/memory.stat":    "inactive_file 104857600\n", // 100MB
 	}
 
-	mem, err := readCgroupV2MemoryWithFS(mockFS)
+	mem, err := readCgroupMemoryWithFS(mockFS, cgroupV2Config)
 	if err != nil {
-		t.Fatalf("readCgroupV2MemoryWithFS failed: %v", err)
+		t.Fatalf("readCgroupMemoryWithFS failed: %v", err)
 	}
 
 	expectedTotal := uint64(2147483648)     // 2GB
@@ -76,9 +76,9 @@ func TestReadCgroupV1Memory(t *testing.T) {
 		"/sys/fs/cgroup/memory/memory.stat":           "total_inactive_file 104857600\n", // 100MB
 	}
 
-	mem, err := readCgroupV1MemoryWithFS(mockFS)
+	mem, err := readCgroupMemoryWithFS(mockFS, cgroupV1Config)
 	if err != nil {
-		t.Fatalf("readCgroupV1MemoryWithFS failed: %v", err)
+		t.Fatalf("readCgroupMemoryWithFS failed: %v", err)
 	}
 
 	expectedTotal := uint64(2147483648)     // 2GB
@@ -145,9 +145,9 @@ func TestReadCgroupV2Memory_UsageExceedsLimit(t *testing.T) {
 		"/sys/fs/cgroup/memory.stat":    "inactive_file 104857600\n", // 100MB
 	}
 
-	mem, err := readCgroupV2MemoryWithFS(mockFS)
+	mem, err := readCgroupMemoryWithFS(mockFS, cgroupV2Config)
 	if err != nil {
-		t.Fatalf("readCgroupV2MemoryWithFS failed: %v", err)
+		t.Fatalf("readCgroupMemoryWithFS failed: %v", err)
 	}
 
 	expectedTotal := uint64(2147483648)    // 2GB
@@ -169,7 +169,7 @@ func TestReadCgroupV2Memory_Unlimited(t *testing.T) {
 		"/sys/fs/cgroup/memory.stat":    "inactive_file 104857600\n", // 100MB
 	}
 
-	_, err := readCgroupV2MemoryWithFS(mockFS)
+	_, err := readCgroupMemoryWithFS(mockFS, cgroupV2Config)
 	if err == nil {
 		t.Error("Expected error for unlimited memory (max)")
 	}
@@ -182,9 +182,9 @@ func TestReadCgroupV2Memory_MissingStatFile(t *testing.T) {
 		// memory.stat is missing
 	}
 
-	mem, err := readCgroupV2MemoryWithFS(mockFS)
+	mem, err := readCgroupMemoryWithFS(mockFS, cgroupV2Config)
 	if err != nil {
-		t.Fatalf("readCgroupV2MemoryWithFS failed: %v", err)
+		t.Fatalf("readCgroupMemoryWithFS failed: %v", err)
 	}
 
 	expectedTotal := uint64(2147483648)     // 2GB
@@ -206,7 +206,7 @@ func TestReadCgroupV1Memory_Unlimited(t *testing.T) {
 		"/sys/fs/cgroup/memory/memory.stat":           "total_inactive_file 104857600\n", // 100MB
 	}
 
-	_, err := readCgroupV1MemoryWithFS(mockFS)
+	_, err := readCgroupMemoryWithFS(mockFS, cgroupV1Config)
 	if err == nil {
 		t.Error("Expected error for unlimited memory")
 	}

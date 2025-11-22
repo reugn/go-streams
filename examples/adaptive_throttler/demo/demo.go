@@ -10,6 +10,13 @@ import (
 	"github.com/reugn/go-streams/flow"
 )
 
+// main demonstrates adaptive throttling with simulated resource pressure.
+// The demo:
+// 1. Produces 250 elements in bursts
+// 2. Processes elements with CPU-intensive work (50ms each)
+// 3. Simulates increasing memory pressure as more elements are processed
+// 4. The adaptive throttler adjusts throughput based on CPU/memory usage
+// 5. Stats are logged every 500ms showing rate adaptation
 func main() {
 	var elementsProcessed atomic.Int64
 

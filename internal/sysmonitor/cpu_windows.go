@@ -139,8 +139,6 @@ func getProcessCPUTimes(pid int) (syscall.Filetime, syscall.Filetime, error) {
 		return k, u, fmt.Errorf("failed to get process times for PID %d: %w", pid, err)
 	}
 
-	// Validate that we got non-zero times (unless process just started)
-	// This helps catch cases where the API call succeeded but returned invalid data
 	return k, u, nil
 }
 

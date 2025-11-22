@@ -62,17 +62,17 @@ type AdaptiveThrottlerConfig struct {
 	MaxRateChangeFactor float64
 
 	// MemoryReader is a user-provided custom function that returns memory usage percentage.
-    // This can be particularly useful for containerized deployments or other environments
-    // where standard system memory readings may not accurately reflect container-specific
-    // usage.
+	// This can be particularly useful for containerized deployments or other environments
+	// where standard system memory readings may not accurately reflect container-specific
+	// usage.
 	// If nil, system memory will be read via mem.VirtualMemory().
 	// Must return memory used percentage (0-100).
 	MemoryReader func() (float64, error)
 }
 
 // DefaultAdaptiveThrottlerConfig returns sensible defaults for most use cases
-func DefaultAdaptiveThrottlerConfig() AdaptiveThrottlerConfig {
-	return AdaptiveThrottlerConfig{
+func DefaultAdaptiveThrottlerConfig() *AdaptiveThrottlerConfig {
+	return &AdaptiveThrottlerConfig{
 		MaxMemoryPercent:    80.0,                   // Conservative memory threshold
 		MaxCPUPercent:       70.0,                   // Conservative CPU threshold
 		MinThroughput:       10,                     // Reasonable minimum throughput
@@ -138,8 +138,7 @@ var _ streams.Flow = (*AdaptiveThrottler)(nil)
 // If config is nil, default configuration will be used.
 func NewAdaptiveThrottler(config *AdaptiveThrottlerConfig) (*AdaptiveThrottler, error) {
 	if config == nil {
-		defaultConfig := DefaultAdaptiveThrottlerConfig()
-		config = &defaultConfig
+		config = DefaultAdaptiveThrottlerConfig()
 	}
 
 	// Validate configuration

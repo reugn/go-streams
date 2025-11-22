@@ -104,7 +104,7 @@ func setupDemoThrottler(elementsProcessed *atomic.Int64) *flow.AdaptiveThrottler
 		return memoryPercent, nil
 	}
 
-	throttler, err := flow.NewAdaptiveThrottler(&config)
+	throttler, err := flow.NewAdaptiveThrottler(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed to create adaptive throttler: %v", err))
 	}

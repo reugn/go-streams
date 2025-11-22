@@ -599,8 +599,7 @@ func TestAdaptiveThrottler_CloseClosesOutputEvenIfInputOpen(t *testing.T) {
 }
 
 func TestAdaptiveThrottler_CloseStopsBackgroundLoops(t *testing.T) {
-	config := DefaultAdaptiveThrottlerConfig()
-	at, err := NewAdaptiveThrottler(&config)
+	at, err := NewAdaptiveThrottler(DefaultAdaptiveThrottlerConfig())
 	if err != nil {
 		t.Fatalf("failed to create adaptive throttler: %v", err)
 	}
@@ -618,10 +617,7 @@ func TestAdaptiveThrottler_CloseStopsBackgroundLoops(t *testing.T) {
 }
 
 func TestAdaptiveThrottler_CPUUsageMode(t *testing.T) {
-	config := DefaultAdaptiveThrottlerConfig()
-	config.CPUUsageMode = CPUUsageModeMeasured
-
-	at, err := NewAdaptiveThrottler(&config)
+	at, err := NewAdaptiveThrottler(DefaultAdaptiveThrottlerConfig())
 	if err != nil {
 		t.Fatalf("failed to create adaptive throttler: %v", err)
 	}
@@ -645,7 +641,7 @@ func TestAdaptiveThrottler_CPUUsageMode(t *testing.T) {
 
 func TestAdaptiveThrottler_GetCurrentRate(t *testing.T) {
 	config := DefaultAdaptiveThrottlerConfig()
-	at, err := NewAdaptiveThrottler(&config)
+	at, err := NewAdaptiveThrottler(config)
 	if err != nil {
 		t.Fatalf("failed to create adaptive throttler: %v", err)
 	}
@@ -665,7 +661,7 @@ func TestAdaptiveThrottler_GetCurrentRate(t *testing.T) {
 
 func TestAdaptiveThrottler_GetResourceStats(t *testing.T) {
 	config := DefaultAdaptiveThrottlerConfig()
-	at, err := NewAdaptiveThrottler(&config)
+	at, err := NewAdaptiveThrottler(config)
 	if err != nil {
 		t.Fatalf("failed to create adaptive throttler: %v", err)
 	}
@@ -747,8 +743,7 @@ func TestAdaptiveThrottler_BufferBackpressure(t *testing.T) {
 }
 
 func BenchmarkAdaptiveThrottler_GetResourceStats(b *testing.B) {
-	config := DefaultAdaptiveThrottlerConfig()
-	at, err := NewAdaptiveThrottler(&config)
+	at, err := NewAdaptiveThrottler(DefaultAdaptiveThrottlerConfig())
 	if err != nil {
 		b.Fatalf("failed to create adaptive throttler: %v", err)
 	}
@@ -948,7 +943,7 @@ func TestAdaptiveThrottler_CustomMemoryReader(t *testing.T) {
 		return customMemoryPercent, nil
 	}
 
-	at, err := NewAdaptiveThrottler(&config)
+	at, err := NewAdaptiveThrottler(config)
 	if err != nil {
 		t.Fatalf("failed to create adaptive throttler: %v", err)
 	}

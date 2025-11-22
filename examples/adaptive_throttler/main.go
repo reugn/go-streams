@@ -17,7 +17,7 @@ func main() {
 	// To setup a custom throttler, you can modify the throttlerConfig struct with your desired values.
 	// For all available options, see the flow.AdaptiveThrottlerConfig struct.
 	throttlerConfig := flow.DefaultAdaptiveThrottlerConfig()
-	throttler, err := flow.NewAdaptiveThrottler(&throttlerConfig)
+	throttler, err := flow.NewAdaptiveThrottler(throttlerConfig)
 	if err != nil {
 		panic(fmt.Sprintf("failed to create adaptive throttler: %v", err))
 	}

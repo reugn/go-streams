@@ -239,6 +239,11 @@ func parseMemInfo(r io.Reader) (SystemMemory, error) {
 		}
 
 		// Convert from kB to bytes
+		// Check for overflow
+		const maxValueBeforeOverflow = (1<<64 - 1) / 1024
+		if value > maxValueBeforeOverflow {
+			return SystemMemory{}, fmt.Errorf("memory value too large: %d kB would overflow when converting to bytes", value)
+		}
 		value *= 1024
 
 		switch key {

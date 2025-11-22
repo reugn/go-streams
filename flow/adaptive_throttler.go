@@ -44,8 +44,8 @@ type AdaptiveThrottlerConfig struct {
 
 	// CPU usage sampling mode.
 	//
-	// CPUUsageModeHeuristic: Estimates CPU usage using a simple heuristic (goroutine count), suitable for platforms
-	// where accurate process CPU measurement is not supported.
+	// CPUUsageModeHeuristic: Estimates CPU usage using a simple heuristic (goroutine count),
+	// suitable for platforms where accurate process CPU measurement is not supported.
 	//
 	// CPUUsageModeMeasured: Attempts to measure actual process CPU usage natively
 	// (when supported), providing more accurate CPU usage readings.

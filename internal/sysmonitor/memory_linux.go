@@ -25,12 +25,8 @@ var (
 // and returns appropriate memory information.
 func GetSystemMemory() (SystemMemory, error) {
 	memoryReaderOnce.Do(func() {
-		memoryReaderMu.Lock()
-		if memoryReader == nil {
-			memoryReader = readSystemMemoryAuto
-			fileSystem = OSFileSystem{}
-		}
-		memoryReaderMu.Unlock()
+		memoryReader = readSystemMemoryAuto
+		fileSystem = OSFileSystem{}
 	})
 
 	memoryReaderMu.RLock()

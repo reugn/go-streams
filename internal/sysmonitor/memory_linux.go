@@ -277,6 +277,11 @@ func parseMemInfo(r io.Reader) (SystemMemory, error) {
 		}
 	}
 
+	// Ensure available doesn't exceed total
+	if available > total {
+		available = total
+	}
+
 	return SystemMemory{
 		Total:     total,
 		Available: available,

@@ -10,6 +10,12 @@ import (
 	"github.com/reugn/go-streams"
 )
 
+const (
+	// minSampleInterval is the minimum allowed sampling interval to prevent
+	// excessive CPU overhead from too-frequent system resource polling.
+	minSampleInterval = 10 * time.Millisecond
+)
+
 // AdaptiveThrottlerConfig configures the adaptive throttler behavior
 type AdaptiveThrottlerConfig struct {
 	// Resource thresholds (0-100 percentage)
@@ -149,8 +155,8 @@ func NewAdaptiveThrottler(config *AdaptiveThrottlerConfig) (*AdaptiveThrottler, 
 	if config.BufferSize < 1 {
 		return nil, fmt.Errorf("invalid BufferSize: %d", config.BufferSize)
 	}
-	if config.SampleInterval <= 0 {
-		return nil, fmt.Errorf("invalid SampleInterval: %v", config.SampleInterval)
+	if config.SampleInterval < minSampleInterval {
+		return nil, fmt.Errorf("invalid SampleInterval: %v; must be at least %v to prevent high CPU overhead", config.SampleInterval, minSampleInterval)
 	}
 	if config.HysteresisBuffer < 0 {
 		return nil, fmt.Errorf("invalid HysteresisBuffer: %f", config.HysteresisBuffer)

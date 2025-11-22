@@ -14,6 +14,8 @@ const (
 	// minSampleInterval is the minimum allowed sampling interval to prevent
 	// excessive CPU overhead from too-frequent system resource polling.
 	minSampleInterval = 10 * time.Millisecond
+	// smoothingFactor is the factor by which the current rate is adjusted to approach the target rate.
+	smoothingFactor = 0.3 // 30% of remaining distance per cycle
 )
 
 // AdaptiveThrottlerConfig configures the adaptive throttler behavior
@@ -157,7 +159,9 @@ func NewAdaptiveThrottler(config *AdaptiveThrottlerConfig) (*AdaptiveThrottler, 
 		return nil, fmt.Errorf("invalid BufferSize: %d", config.BufferSize)
 	}
 	if config.SampleInterval < minSampleInterval {
-		return nil, fmt.Errorf("invalid SampleInterval: %v; must be at least %v to prevent high CPU overhead", config.SampleInterval, minSampleInterval)
+		return nil, fmt.Errorf(
+			"invalid SampleInterval: %v; must be at least %v to prevent high CPU overhead",
+			config.SampleInterval, minSampleInterval)
 	}
 	if config.HysteresisBuffer < 0 {
 		return nil, fmt.Errorf("invalid HysteresisBuffer: %f", config.HysteresisBuffer)
@@ -201,6 +205,49 @@ func NewAdaptiveThrottler(config *AdaptiveThrottlerConfig) (*AdaptiveThrottler, 
 	return at, nil
 }
 
+// Via asynchronously streams data to the given Flow and returns it
+func (at *AdaptiveThrottler) Via(flow streams.Flow) streams.Flow {
+	go at.streamPortioned(flow)
+	return flow
+}
+
+// To streams data to the given Sink and blocks until completion
+func (at *AdaptiveThrottler) To(sink streams.Sink) {
+	at.streamPortioned(sink)
+	sink.AwaitCompletion()
+}
+
+// In returns the input channel
+func (at *AdaptiveThrottler) In() chan<- any {
+	return at.in
+}
+
+// Out returns the output channel
+func (at *AdaptiveThrottler) Out() <-chan any {
+	return at.out
+}
+
+// GetCurrentRate returns the current throughput rate (elements per second)
+func (at *AdaptiveThrottler) GetCurrentRate() int64 {
+	return at.currentRate.Load()
+}
+
+// GetResourceStats returns current resource statistics
+func (at *AdaptiveThrottler) GetResourceStats() ResourceStats {
+	return at.monitor.GetStats()
+}
+
+// Close stops the adaptive throttler and cleans up resources
+func (at *AdaptiveThrottler) Close() {
+	// Drain any pending quota signals to prevent goroutine leaks
+	select {
+	case <-at.quotaSignal:
+	default:
+	}
+
+	at.stop()
+}
+
 // adaptRateLoop periodically adapts the throughput rate based on resource availability
 func (at *AdaptiveThrottler) adaptRateLoop() {
 	ticker := time.NewTicker(at.config.SampleInterval)
@@ -219,76 +266,95 @@ func (at *AdaptiveThrottler) adaptRateLoop() {
 // adaptRate adjusts the throughput rate based on current resource usage
 func (at *AdaptiveThrottler) adaptRate() {
 	stats := at.monitor.GetStats()
-	// constrained indicates if memory or CPU usage exceeds configured thresholds
-	constrained := stats.MemoryUsedPercent > at.config.MaxMemoryPercent ||
-		stats.CPUUsagePercent > at.config.MaxCPUPercent
-
 	currentRate := float64(at.currentRate.Load())
-	targetRate := currentRate
 
-	if constrained {
-		// Reduce rate when resources are constrained
-		// Calculate how far over the limits we are (as a percentage)
-		memoryOverage := math.Max(0, stats.MemoryUsedPercent-at.config.MaxMemoryPercent)
-		cpuOverage := math.Max(0, stats.CPUUsagePercent-at.config.MaxCPUPercent)
-		maxOverage := math.Max(memoryOverage, cpuOverage)
+	// Calculate target rate based on resource constraints
+	targetRate := at.calculateTargetRate(currentRate, stats)
 
-		// Scale reduction factor based on overage severity (0-100%)
-		severityFactor := maxOverage / 50.0 // 50% overage = full severity
-		severityFactor = math.Min(severityFactor, 1.0)
-
-		// Calculate reduction: base factor + severity bonus
-		reductionFactor := at.config.AdaptationFactor * (1.0 + severityFactor)
-		maxReduction := currentRate * at.config.MaxRateChangeFactor
-		reduction := math.Min(currentRate*reductionFactor, maxReduction)
-
-		targetRate = currentRate - reduction
-
-		// Avoid negative rates
-		if targetRate < 0 {
-			targetRate = 0
-		}
-	} else {
-		// Increase rate when resources are available, with hysteresis
-		memoryHeadroom := at.config.MaxMemoryPercent - stats.MemoryUsedPercent
-		cpuHeadroom := at.config.MaxCPUPercent - stats.CPUUsagePercent
-		minHeadroom := math.Min(memoryHeadroom, cpuHeadroom)
-
-		// Apply hysteresis buffer - only increase if we have significant headroom
-		effectiveHeadroom := minHeadroom - at.config.HysteresisBuffer
-		if effectiveHeadroom > 0 {
-			// Use square root scaling for stable, diminishing returns
-			headroomRatio := math.Min(effectiveHeadroom/30.0, 1.0) // Cap at 30% headroom for scaling
-			increaseFactor := at.config.AdaptationFactor * math.Sqrt(headroomRatio)
-			maxIncrease := currentRate * at.config.MaxRateChangeFactor
-
-			increase := math.Min(currentRate*increaseFactor, maxIncrease)
-			targetRate = currentRate + increase
-		}
-	}
-
+	// Apply smoothing if enabled
 	if at.config.SmoothTransitions {
-		// Smooth transitions: gradually approach target rate to avoid abrupt changes
-		// Use a fixed smoothing factor of 0.3 (30% of remaining distance per cycle)
-		const smoothingFactor = 0.3
-		diff := targetRate - currentRate
-		targetRate = currentRate + diff*smoothingFactor
+		targetRate = at.applySmoothing(currentRate, targetRate)
 	}
 
 	// Enforce bounds
 	targetRate = math.Max(float64(at.config.MinThroughput), targetRate)
 	targetRate = math.Min(float64(at.config.MaxThroughput), targetRate)
 
-	// Convert to integer and update atomically
-	newRateInt := int64(math.Round(targetRate))
+	// Commit the new rate if it changed
+	at.commitRateChange(targetRate)
+}
 
-	// Only update if rate actually changed
-	if newRateInt != at.currentRate.Load() {
+// calculateTargetRate determines the target rate based on resource constraints
+func (at *AdaptiveThrottler) calculateTargetRate(currentRate float64, stats ResourceStats) float64 {
+	// Constrained is true if resources are above thresholds
+	constrained := stats.MemoryUsedPercent > at.config.MaxMemoryPercent ||
+		stats.CPUUsagePercent > at.config.MaxCPUPercent
+
+	if constrained {
+		return at.calculateReduction(currentRate, stats)
+	}
+	return at.calculateIncrease(currentRate, stats)
+}
+
+// calculateReduction computes the rate reduction when resources are constrained
+func (at *AdaptiveThrottler) calculateReduction(currentRate float64, stats ResourceStats) float64 {
+	// Calculate how far over the limits we are (as a percentage)
+	memoryOverage := math.Max(0, stats.MemoryUsedPercent-at.config.MaxMemoryPercent)
+	cpuOverage := math.Max(0, stats.CPUUsagePercent-at.config.MaxCPUPercent)
+	maxOverage := math.Max(memoryOverage, cpuOverage)
+
+	// Scale reduction factor based on overage severity (0-100%)
+	severityFactor := math.Min(maxOverage/50.0, 1.0) // 50% overage = full severity
+
+	// Calculate reduction: base factor + severity bonus
+	reductionFactor := at.config.AdaptationFactor * (1.0 + severityFactor)
+	maxReduction := currentRate * at.config.MaxRateChangeFactor
+	reduction := math.Min(currentRate*reductionFactor, maxReduction)
+
+	targetRate := currentRate - reduction
+
+	// Avoid negative rates
+	return math.Max(0, targetRate)
+}
+
+// calculateIncrease computes the rate increase when resources are available
+func (at *AdaptiveThrottler) calculateIncrease(currentRate float64, stats ResourceStats) float64 {
+	memoryHeadroom := at.config.MaxMemoryPercent - stats.MemoryUsedPercent
+	cpuHeadroom := at.config.MaxCPUPercent - stats.CPUUsagePercent
+	minHeadroom := math.Min(memoryHeadroom, cpuHeadroom)
+
+	// Apply hysteresis buffer - only increase if we have significant headroom
+	effectiveHeadroom := minHeadroom - at.config.HysteresisBuffer
+	if effectiveHeadroom <= 0 {
+		return currentRate // No increase if insufficient headroom
+	}
+
+	// Use square root scaling for stable, diminishing returns
+	headroomRatio := math.Min(effectiveHeadroom/30.0, 1.0) // Cap at 30% headroom for scaling
+	increaseFactor := at.config.AdaptationFactor * math.Sqrt(headroomRatio)
+	maxIncrease := currentRate * at.config.MaxRateChangeFactor
+
+	increase := math.Min(currentRate*increaseFactor, maxIncrease)
+	return currentRate + increase
+}
+
+// applySmoothing gradually approaches the target rate to avoid abrupt changes
+func (at *AdaptiveThrottler) applySmoothing(currentRate, targetRate float64) float64 {
+	diff := targetRate - currentRate
+	return currentRate + diff*smoothingFactor
+}
+
+// commitRateChange atomically updates the rate if it has changed
+func (at *AdaptiveThrottler) commitRateChange(targetRate float64) {
+	newRateInt := int64(math.Round(targetRate))
+	currentRateInt := at.currentRate.Load()
+
+	if newRateInt != currentRateInt {
 		at.currentRate.Store(newRateInt)
 		at.maxElements.Store(newRateInt)
 		at.counter.Store(0) // Reset quota counter to apply new rate immediately
-		// Wake any blocked emitters
-		// so the new quota takes effect without waiting for the next period tick.
+		// Wake any blocked emitters so the new quota takes effect
+		// without waiting for the next period tick.
 		at.notifyQuotaReset()
 		at.lastAdaptation = time.Now()
 	}
@@ -340,6 +406,7 @@ func (at *AdaptiveThrottler) buffer() {
 	}
 }
 
+// emit emits an element to the output channel, blocking if quota is exceeded
 func (at *AdaptiveThrottler) emit(element any) {
 	for {
 		if !at.quotaExceeded() {
@@ -363,28 +430,6 @@ func (at *AdaptiveThrottler) emit(element any) {
 	}
 }
 
-// Via asynchronously streams data to the given Flow and returns it
-func (at *AdaptiveThrottler) Via(flow streams.Flow) streams.Flow {
-	go at.streamPortioned(flow)
-	return flow
-}
-
-// To streams data to the given Sink and blocks until completion
-func (at *AdaptiveThrottler) To(sink streams.Sink) {
-	at.streamPortioned(sink)
-	sink.AwaitCompletion()
-}
-
-// Out returns the output channel
-func (at *AdaptiveThrottler) Out() <-chan any {
-	return at.out
-}
-
-// In returns the input channel
-func (at *AdaptiveThrottler) In() chan<- any {
-	return at.in
-}
-
 // streamPortioned streams elements enforcing the adaptive quota
 func (at *AdaptiveThrottler) streamPortioned(inlet streams.Inlet) {
 	defer close(inlet.In())
@@ -395,27 +440,7 @@ func (at *AdaptiveThrottler) streamPortioned(inlet streams.Inlet) {
 	at.stop()
 }
 
-// GetCurrentRate returns the current throughput rate (elements per second)
-func (at *AdaptiveThrottler) GetCurrentRate() int64 {
-	return at.currentRate.Load()
-}
-
-// GetResourceStats returns current resource statistics
-func (at *AdaptiveThrottler) GetResourceStats() ResourceStats {
-	return at.monitor.GetStats()
-}
-
-// Close stops the adaptive throttler and cleans up resources
-func (at *AdaptiveThrottler) Close() {
-	// Drain any pending quota signals to prevent goroutine leaks
-	select {
-	case <-at.quotaSignal:
-	default:
-	}
-
-	at.stop()
-}
-
+// stop stops the adaptive throttler and cleans up resources
 func (at *AdaptiveThrottler) stop() {
 	at.stopOnce.Do(func() {
 		close(at.done)

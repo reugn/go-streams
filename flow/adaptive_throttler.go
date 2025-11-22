@@ -245,6 +245,11 @@ func (at *AdaptiveThrottler) adaptRate() {
 		reduction := math.Min(currentRate*reductionFactor, maxReduction)
 
 		targetRate = currentRate - reduction
+
+		// Avoid negative rates
+		if targetRate < 0 {
+			targetRate = 0
+		}
 	} else {
 		// Increase rate when resources are available, with hysteresis
 		memoryHeadroom := at.config.MaxMemoryPercent - stats.MemoryUsedPercent

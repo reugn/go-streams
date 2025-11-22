@@ -84,7 +84,10 @@ func readCgroupV2MemoryWithFS(fs FileSystem) (SystemMemory, error) {
 	}
 
 	// Parse memory.stat to find reclaimable memory (inactive_file)
-	inactiveFile, _ := readCgroupStatWithFS(fs, "/sys/fs/cgroup/memory.stat", "inactive_file")
+	inactiveFile, err := readCgroupStatWithFS(fs, "/sys/fs/cgroup/memory.stat", "inactive_file")
+	if err != nil {
+		inactiveFile = 0 // Default to 0 if unavailable
+	}
 
 	// Available = (Limit - Usage) + Reclaimable
 	// Note: If Limit - Usage is near zero, the kernel would reclaim inactive_file
@@ -127,6 +130,7 @@ func readCgroupV1MemoryWithFS(fs FileSystem) (SystemMemory, error) {
 	}
 
 	// Parse memory.stat for V1
+	// Note: total_inactive_file is optional - if unavailable, we continue with 0 (graceful degradation)
 	inactiveFile, _ := readCgroupStatWithFS(fs, "/sys/fs/cgroup/memory/memory.stat", "total_inactive_file")
 
 	// Handle case where usage exceeds limit
@@ -183,6 +187,9 @@ func readCgroupStatWithFS(fs FileSystem, path string, key string) (uint64, error
 				return val, nil
 			}
 		}
+	}
+	if err := scanner.Err(); err != nil {
+		return 0, fmt.Errorf("error reading %s: %w", path, err)
 	}
 	return 0, fmt.Errorf("key %q not found in %s", key, path)
 }

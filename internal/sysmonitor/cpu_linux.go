@@ -73,6 +73,9 @@ func (s *ProcessSampler) Sample(deltaTime time.Duration) float64 {
 
 	// Normalized to 0-100% (divides by numCPU for system-wide metric)
 	numcpu := runtime.NumCPU()
+	if numcpu <= 0 {
+		numcpu = 1 // Safety check
+	}
 	percent := (cpuTimeSeconds / wallTimeSeconds) * 100.0 / float64(numcpu)
 
 	if percent > 100.0 {

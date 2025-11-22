@@ -90,6 +90,7 @@ func NewResourceMonitor(
 
 	rm.initSampler()
 
+    // start periodically collecting resource statistics
 	go rm.monitor()
 
 	return rm

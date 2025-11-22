@@ -223,8 +223,6 @@ func waitForStats(
 }
 
 func TestResourceMonitor_UsesSystemMemoryStats(t *testing.T) {
-	t.Helper()
-
 	restore := sysmonitor.SetMemoryReader(func() (sysmonitor.SystemMemory, error) {
 		return sysmonitor.SystemMemory{
 			Total:     100 * 1024 * 1024,

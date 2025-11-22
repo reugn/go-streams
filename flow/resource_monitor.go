@@ -2,6 +2,7 @@ package flow
 
 import (
 	"fmt"
+	"math"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -90,7 +91,7 @@ func NewResourceMonitor(
 
 	rm.initSampler()
 
-    // start periodically collecting resource statistics
+	// start periodically collecting resource statistics
 	go rm.monitor()
 
 	return rm
@@ -263,4 +264,24 @@ func (rm *ResourceMonitor) Close() {
 	default:
 		close(rm.done)
 	}
+}
+
+// clampPercent clamps a percentage value between 0 and 100.
+func clampPercent(percent float64) float64 {
+	if percent < 0 {
+		return 0
+	}
+	if percent > 100 {
+		return 100
+	}
+	return percent
+}
+
+// validatePercent validates and normalizes a percentage value.
+// It checks for NaN or Inf values and clamps the result between 0 and 100.
+func validatePercent(percent float64) float64 {
+	if math.IsNaN(percent) || math.IsInf(percent, 0) {
+		return 0
+	}
+	return clampPercent(percent)
 }

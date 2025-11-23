@@ -27,6 +27,9 @@ func NewGoroutineHeuristicSampler() ProcessCPUSampler {
 	return &GoroutineHeuristicSampler{}
 }
 
+// Verify implementation of ProcessCPUSampler interface
+var _ ProcessCPUSampler = &GoroutineHeuristicSampler{}
+
 // Sample returns the CPU usage percentage over the given time delta
 func (s *GoroutineHeuristicSampler) Sample(_ time.Duration) float64 {
 	// Uses logarithmic scaling for more realistic CPU estimation

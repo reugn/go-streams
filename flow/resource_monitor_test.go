@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"fmt"
 	"math"
 	"runtime"
 	"testing"
@@ -17,6 +18,50 @@ func TestNewResourceMonitor_InvalidSampleInterval(t *testing.T) {
 	}()
 
 	NewResourceMonitor(0, 80.0, 70.0, CPUUsageModeHeuristic, nil)
+}
+
+func TestNewResourceMonitor_InvalidMemoryThreshold(t *testing.T) {
+	t.Run("negative memory threshold", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("expected panic for negative memory threshold")
+			}
+		}()
+
+		NewResourceMonitor(100*time.Millisecond, -1.0, 70.0, CPUUsageModeHeuristic, nil)
+	})
+
+	t.Run("memory threshold > 100", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("expected panic for memory threshold > 100")
+			}
+		}()
+
+		NewResourceMonitor(100*time.Millisecond, 150.0, 70.0, CPUUsageModeHeuristic, nil)
+	})
+}
+
+func TestNewResourceMonitor_InvalidCPUThreshold(t *testing.T) {
+	t.Run("negative CPU threshold", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("expected panic for negative CPU threshold")
+			}
+		}()
+
+		NewResourceMonitor(100*time.Millisecond, 80.0, -1.0, CPUUsageModeHeuristic, nil)
+	})
+
+	t.Run("CPU threshold > 100", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("expected panic for CPU threshold > 100")
+			}
+		}()
+
+		NewResourceMonitor(100*time.Millisecond, 80.0, 150.0, CPUUsageModeHeuristic, nil)
+	})
 }
 
 func TestResourceMonitor_GetStats(t *testing.T) {
@@ -274,6 +319,180 @@ func TestResourceStats_MemoryCalculation(t *testing.T) {
 	if stats.GoroutineCount < 2 {
 		t.Errorf("goroutine count should be at least 2, got %d", stats.GoroutineCount)
 	}
+}
+
+func TestResourceMonitor_GetStatsNilStats(t *testing.T) {
+	rm := NewResourceMonitor(50*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic, nil)
+	defer rm.Close()
+
+	// Manually set stats to nil
+	rm.stats.Store(nil)
+
+	stats := rm.GetStats()
+	if stats.Timestamp.IsZero() {
+		// Should return empty ResourceStats when stats is nil
+		if stats.MemoryUsedPercent != 0 || stats.CPUUsagePercent != 0 || stats.GoroutineCount != 0 {
+			t.Errorf("expected empty stats when nil, got %+v", stats)
+		}
+	}
+}
+
+func TestResourceMonitor_MemoryUsagePercentEdgeCases(t *testing.T) {
+	t.Run("available > total", func(t *testing.T) {
+		restore := sysmonitor.SetMemoryReader(func() (sysmonitor.SystemMemory, error) {
+			return sysmonitor.SystemMemory{
+				Total:     100 * 1024 * 1024,
+				Available: 150 * 1024 * 1024, // Available > Total (invalid but should handle)
+			}, nil
+		})
+		defer restore()
+
+		rm := NewResourceMonitor(50*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic, nil)
+		defer rm.Close()
+
+		stats := rm.collectStats()
+		// Should clamp available to total, so used = 0, percent = 0
+		if stats.MemoryUsedPercent < 0 || stats.MemoryUsedPercent > 100 {
+			t.Errorf("memory percent should be valid, got %f", stats.MemoryUsedPercent)
+		}
+	})
+
+	t.Run("total == 0", func(t *testing.T) {
+		restore := sysmonitor.SetMemoryReader(func() (sysmonitor.SystemMemory, error) {
+			return sysmonitor.SystemMemory{
+				Total:     0,
+				Available: 0,
+			}, nil
+		})
+		defer restore()
+
+		rm := NewResourceMonitor(50*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic, nil)
+		defer rm.Close()
+
+		stats := rm.collectStats()
+		// When total is 0, tryGetSystemMemory() returns hasSystemStats=false
+		// This causes collectStats() to fall back to procStats (runtime.MemStats)
+		if stats.MemoryUsedPercent < 0 || stats.MemoryUsedPercent > 100 {
+			t.Errorf("memory percent should be valid when total is 0 (falls back to procStats), got %f", stats.MemoryUsedPercent)
+		}
+	})
+
+	t.Run("procStats fallback", func(t *testing.T) {
+		// Set memory reader to return error to trigger procStats fallback
+		restore := sysmonitor.SetMemoryReader(func() (sysmonitor.SystemMemory, error) {
+			return sysmonitor.SystemMemory{}, fmt.Errorf("memory read failed")
+		})
+		defer restore()
+
+		rm := NewResourceMonitor(50*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic, nil)
+		defer rm.Close()
+
+		stats := rm.collectStats()
+		// Should use procStats fallback
+		if stats.MemoryUsedPercent < 0 || stats.MemoryUsedPercent > 100 {
+			t.Errorf("memory percent should be valid with procStats fallback, got %f", stats.MemoryUsedPercent)
+		}
+	})
+
+	t.Run("procStats nil or Sys == 0", func(t *testing.T) {
+		// This is hard to test directly as it requires system memory to fail
+		// and procStats to be nil or have Sys == 0, which is unlikely in practice
+		// but the code path exists for safety
+		restore := sysmonitor.SetMemoryReader(func() (sysmonitor.SystemMemory, error) {
+			return sysmonitor.SystemMemory{}, fmt.Errorf("memory read failed")
+		})
+		defer restore()
+
+		rm := NewResourceMonitor(50*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic, nil)
+		defer rm.Close()
+
+		// Force hasSystemStats to false by making GetSystemMemory fail
+		stats := rm.collectStats()
+		// Should handle gracefully
+		if stats.MemoryUsedPercent < 0 || stats.MemoryUsedPercent > 100 {
+			t.Errorf("memory percent should be valid, got %f", stats.MemoryUsedPercent)
+		}
+	})
+}
+
+func TestResourceMonitor_CustomMemoryReaderError(t *testing.T) {
+	errorCount := 0
+	rm := NewResourceMonitor(50*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic, func() (float64, error) {
+		errorCount++
+		return 0, fmt.Errorf("custom reader error") // Return error to trigger fallback
+	})
+	defer rm.Close()
+
+	stats := rm.collectStats()
+	// Should fall back to system memory when custom reader fails
+	if stats.MemoryUsedPercent < 0 || stats.MemoryUsedPercent > 100 {
+		t.Errorf("memory percent should be valid after fallback, got %f", stats.MemoryUsedPercent)
+	}
+	if errorCount == 0 {
+		t.Error("custom memory reader should have been called")
+	}
+}
+
+func TestResourceMonitor_ValidateResourceStats(t *testing.T) {
+	rm := NewResourceMonitor(50*time.Millisecond, 80.0, 70.0, CPUUsageModeHeuristic, nil)
+	defer rm.Close()
+
+	t.Run("negative goroutine count", func(t *testing.T) {
+		stats := &ResourceStats{
+			MemoryUsedPercent: 50.0,
+			CPUUsagePercent:   40.0,
+			GoroutineCount:    -1, // Invalid
+			Timestamp:         time.Now(),
+		}
+		// Store invalid stats and retrieve them - validation happens in collectStats
+		// We test indirectly by ensuring GetStats returns valid values
+		rm.stats.Store(stats)
+		// Wait for next collection which will validate
+		time.Sleep(60 * time.Millisecond)
+		retrievedStats := rm.GetStats()
+		// Validation should clamp negative goroutine count to 0
+		if retrievedStats.GoroutineCount < 0 {
+			t.Errorf("goroutine count should not be negative, got %d", retrievedStats.GoroutineCount)
+		}
+	})
+
+	t.Run("zero timestamp", func(t *testing.T) {
+		stats := &ResourceStats{
+			MemoryUsedPercent: 50.0,
+			CPUUsagePercent:   40.0,
+			GoroutineCount:    10,
+			Timestamp:         time.Time{}, // Zero timestamp
+		}
+		rm.stats.Store(stats)
+		// Validation should set timestamp if zero
+		// Note: GetStats doesn't validate, but collectStats does
+		// We test by triggering a new collection
+		time.Sleep(60 * time.Millisecond) // Wait for next collection
+		newStats := rm.GetStats()
+		if newStats.Timestamp.IsZero() {
+			t.Error("timestamp should not be zero after collection")
+		}
+	})
+
+	t.Run("old timestamp refresh", func(t *testing.T) {
+		oldTime := time.Now().Add(-2 * time.Minute) // More than 1 minute ago
+		stats := &ResourceStats{
+			MemoryUsedPercent: 50.0,
+			CPUUsagePercent:   40.0,
+			GoroutineCount:    10,
+			Timestamp:         oldTime,
+		}
+		rm.stats.Store(stats)
+		// Wait for next collection which will validate and refresh timestamp
+		time.Sleep(60 * time.Millisecond)
+		newStats := rm.GetStats()
+		if newStats.Timestamp.Equal(oldTime) {
+			t.Error("timestamp should be refreshed when older than 1 minute")
+		}
+		if time.Since(newStats.Timestamp) > time.Second {
+			t.Error("timestamp should be recent after refresh")
+		}
+	})
 }
 
 func BenchmarkResourceMonitor_GetStats(b *testing.B) {

@@ -13,7 +13,7 @@ var (
 	kernel32                 = syscall.NewLazyDLL("kernel32.dll")
 	procGlobalMemoryStatusEx = kernel32.NewProc("GlobalMemoryStatusEx")
 
-	memoryReader = getSystemMemoryWindows
+	memoryReader   = getSystemMemoryWindows
 	memoryReaderMu sync.RWMutex
 )
 

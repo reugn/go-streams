@@ -5,6 +5,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/reugn/go-streams"
 )
 
 // mockResourceMonitor allows injecting specific resource stats for testing
@@ -158,6 +160,159 @@ func TestAdaptiveThrottler_ConfigValidation(t *testing.T) {
 			shouldError:   true,
 			expectedError: "BufferSize 1000 exceeds MaxBufferSize 500",
 		},
+		{
+			name: "invalid AdaptationFactor <= 0",
+			config: AdaptiveThrottlerConfig{
+				MaxMemoryPercent:    80.0,
+				MaxCPUPercent:       70.0,
+				MinThroughput:       10,
+				MaxThroughput:       100,
+				SampleInterval:      100 * time.Millisecond,
+				BufferSize:          100,
+				MaxBufferSize:       1000,
+				AdaptationFactor:    0.0, // Invalid: <= 0
+				HysteresisBuffer:    5.0,
+				MaxRateChangeFactor: 0.5,
+			},
+			shouldError:   true,
+			expectedError: "invalid AdaptationFactor",
+		},
+		{
+			name: "invalid AdaptationFactor >= 1",
+			config: AdaptiveThrottlerConfig{
+				MaxMemoryPercent:    80.0,
+				MaxCPUPercent:       70.0,
+				MinThroughput:       10,
+				MaxThroughput:       100,
+				SampleInterval:      100 * time.Millisecond,
+				BufferSize:          100,
+				MaxBufferSize:       1000,
+				AdaptationFactor:    1.0, // Invalid: >= 1
+				HysteresisBuffer:    5.0,
+				MaxRateChangeFactor: 0.5,
+			},
+			shouldError:   true,
+			expectedError: "invalid AdaptationFactor",
+		},
+		{
+			name: "invalid MaxCPUPercent <= 0",
+			config: AdaptiveThrottlerConfig{
+				MaxMemoryPercent:    80.0,
+				MaxCPUPercent:       0.0, // Invalid: <= 0
+				MinThroughput:       10,
+				MaxThroughput:       100,
+				SampleInterval:      100 * time.Millisecond,
+				BufferSize:          100,
+				MaxBufferSize:       1000,
+				AdaptationFactor:    0.2,
+				HysteresisBuffer:    5.0,
+				MaxRateChangeFactor: 0.5,
+			},
+			shouldError:   true,
+			expectedError: "invalid MaxCPUPercent",
+		},
+		{
+			name: "invalid MaxCPUPercent > 100",
+			config: AdaptiveThrottlerConfig{
+				MaxMemoryPercent:    80.0,
+				MaxCPUPercent:       150.0, // Invalid: > 100
+				MinThroughput:       10,
+				MaxThroughput:       100,
+				SampleInterval:      100 * time.Millisecond,
+				BufferSize:          100,
+				MaxBufferSize:       1000,
+				AdaptationFactor:    0.2,
+				HysteresisBuffer:    5.0,
+				MaxRateChangeFactor: 0.5,
+			},
+			shouldError:   true,
+			expectedError: "invalid MaxCPUPercent",
+		},
+		{
+			name: "invalid BufferSize < 1",
+			config: AdaptiveThrottlerConfig{
+				MaxMemoryPercent:    80.0,
+				MaxCPUPercent:       70.0,
+				MinThroughput:       10,
+				MaxThroughput:       100,
+				SampleInterval:      100 * time.Millisecond,
+				BufferSize:          0, // Invalid: < 1
+				MaxBufferSize:       1000,
+				AdaptationFactor:    0.2,
+				HysteresisBuffer:    5.0,
+				MaxRateChangeFactor: 0.5,
+			},
+			shouldError:   true,
+			expectedError: "invalid BufferSize",
+		},
+		{
+			name: "invalid SampleInterval < minSampleInterval",
+			config: AdaptiveThrottlerConfig{
+				MaxMemoryPercent:    80.0,
+				MaxCPUPercent:       70.0,
+				MinThroughput:       10,
+				MaxThroughput:       100,
+				SampleInterval:      5 * time.Millisecond, // Invalid: < minSampleInterval (10ms)
+				BufferSize:          100,
+				MaxBufferSize:       1000,
+				AdaptationFactor:    0.2,
+				HysteresisBuffer:    5.0,
+				MaxRateChangeFactor: 0.5,
+			},
+			shouldError:   true,
+			expectedError: "invalid SampleInterval",
+		},
+		{
+			name: "invalid HysteresisBuffer < 0",
+			config: AdaptiveThrottlerConfig{
+				MaxMemoryPercent:    80.0,
+				MaxCPUPercent:       70.0,
+				MinThroughput:       10,
+				MaxThroughput:       100,
+				SampleInterval:      100 * time.Millisecond,
+				BufferSize:          100,
+				MaxBufferSize:       1000,
+				AdaptationFactor:    0.2,
+				HysteresisBuffer:    -1.0, // Invalid: < 0
+				MaxRateChangeFactor: 0.5,
+			},
+			shouldError:   true,
+			expectedError: "invalid HysteresisBuffer",
+		},
+		{
+			name: "invalid MaxRateChangeFactor <= 0",
+			config: AdaptiveThrottlerConfig{
+				MaxMemoryPercent:    80.0,
+				MaxCPUPercent:       70.0,
+				MinThroughput:       10,
+				MaxThroughput:       100,
+				SampleInterval:      100 * time.Millisecond,
+				BufferSize:          100,
+				MaxBufferSize:       1000,
+				AdaptationFactor:    0.2,
+				HysteresisBuffer:    5.0,
+				MaxRateChangeFactor: 0.0, // Invalid: <= 0
+			},
+			shouldError:   true,
+			expectedError: "invalid MaxRateChangeFactor",
+		},
+		{
+			name: "invalid MaxRateChangeFactor > 1",
+			config: AdaptiveThrottlerConfig{
+				MaxMemoryPercent:    80.0,
+				MaxCPUPercent:       70.0,
+				MinThroughput:       10,
+				MaxThroughput:       100,
+				SampleInterval:      100 * time.Millisecond,
+				BufferSize:          100,
+				MaxBufferSize:       1000,
+				AdaptationFactor:    0.2,
+				HysteresisBuffer:    5.0,
+				MaxRateChangeFactor: 1.5, // Invalid: > 1
+			},
+			shouldError:   true,
+			expectedError: "invalid MaxRateChangeFactor",
+		},
 	}
 
 	for _, tt := range tests {
@@ -177,6 +332,29 @@ func TestAdaptiveThrottler_ConfigValidation(t *testing.T) {
 				t.Errorf("unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+func TestAdaptiveThrottler_NilConfig(t *testing.T) {
+	// Test that nil config uses defaults
+	at, err := NewAdaptiveThrottler(nil)
+	if err != nil {
+		t.Fatalf("NewAdaptiveThrottler with nil config should not error, got: %v", err)
+	}
+	defer at.Close()
+
+	// Verify it uses default config values
+	if at.config.MaxMemoryPercent != 80.0 {
+		t.Errorf("expected default MaxMemoryPercent 80.0, got %f", at.config.MaxMemoryPercent)
+	}
+	if at.config.MaxCPUPercent != 70.0 {
+		t.Errorf("expected default MaxCPUPercent 70.0, got %f", at.config.MaxCPUPercent)
+	}
+	if at.config.MinThroughput != 10 {
+		t.Errorf("expected default MinThroughput 10, got %d", at.config.MinThroughput)
+	}
+	if at.config.MaxThroughput != 500 {
+		t.Errorf("expected default MaxThroughput 500, got %d", at.config.MaxThroughput)
 	}
 }
 
@@ -995,5 +1173,286 @@ func TestAdaptiveThrottler_CustomMemoryReader(t *testing.T) {
 	}
 	if callCount == 0 {
 		t.Error("custom memory reader was not called")
+	}
+}
+
+func TestAdaptiveThrottler_Via(t *testing.T) {
+	config := AdaptiveThrottlerConfig{
+		MaxMemoryPercent:    80.0,
+		MaxCPUPercent:       70.0,
+		MinThroughput:       10,
+		MaxThroughput:       100,
+		SampleInterval:      50 * time.Millisecond,
+		BufferSize:          20,
+		AdaptationFactor:    0.2,
+		SmoothTransitions:   false,
+		CPUUsageMode:        CPUUsageModeHeuristic,
+		HysteresisBuffer:    5.0,
+		MaxRateChangeFactor: 0.5,
+	}
+
+	mockMonitor := &mockResourceMonitor{
+		stats: ResourceStats{
+			MemoryUsedPercent: 30.0,
+			CPUUsagePercent:   20.0,
+			GoroutineCount:    5,
+			Timestamp:         time.Now(),
+		},
+	}
+
+	at := newAdaptiveThrottlerWithMonitor(config, mockMonitor)
+	defer at.Close()
+
+	// Create a mock flow
+	mockFlow := &mockFlow{
+		in:  make(chan any, 10),
+		out: make(chan any, 10),
+	}
+
+	// Test Via() - should return the flow and start streaming
+	resultFlow := at.Via(mockFlow)
+	if resultFlow != mockFlow {
+		t.Error("Via() should return the provided flow")
+	}
+
+	// Send an element
+	at.In() <- "test"
+
+	// Wait for element to be forwarded
+	select {
+	case element := <-mockFlow.in:
+		if element != "test" {
+			t.Errorf("expected 'test', got %v", element)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Error("timeout waiting for element to be forwarded via Via()")
+	}
+}
+
+func TestAdaptiveThrottler_To(t *testing.T) {
+	config := AdaptiveThrottlerConfig{
+		MaxMemoryPercent:    80.0,
+		MaxCPUPercent:       70.0,
+		MinThroughput:       10,
+		MaxThroughput:       100,
+		SampleInterval:      50 * time.Millisecond,
+		BufferSize:          20,
+		AdaptationFactor:    0.2,
+		SmoothTransitions:   false,
+		CPUUsageMode:        CPUUsageModeHeuristic,
+		HysteresisBuffer:    5.0,
+		MaxRateChangeFactor: 0.5,
+	}
+
+	mockMonitor := &mockResourceMonitor{
+		stats: ResourceStats{
+			MemoryUsedPercent: 30.0,
+			CPUUsagePercent:   20.0,
+			GoroutineCount:    5,
+			Timestamp:         time.Now(),
+		},
+	}
+
+	at := newAdaptiveThrottlerWithMonitor(config, mockMonitor)
+	defer at.Close()
+
+	// Create a mock sink
+	mockSink := &mockSink{
+		in: make(chan any, 10),
+	}
+
+	// Test To() - should block until completion
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		at.To(mockSink)
+	}()
+
+	// Send an element
+	at.In() <- "test"
+
+	// Wait for element to be received
+	select {
+	case element := <-mockSink.in:
+		if element != "test" {
+			t.Errorf("expected 'test', got %v", element)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Error("timeout waiting for element to be received by sink")
+	}
+
+	// Close input to trigger completion
+	close(at.in)
+
+	// Wait for To() to complete
+	select {
+	case <-done:
+		// Success
+	case <-time.After(500 * time.Millisecond):
+		t.Error("timeout waiting for To() to complete")
+	}
+}
+
+func TestAdaptiveThrottler_BufferInputClose(t *testing.T) {
+	config := AdaptiveThrottlerConfig{
+		MaxMemoryPercent:    80.0,
+		MaxCPUPercent:       70.0,
+		MinThroughput:       10,
+		MaxThroughput:       100,
+		SampleInterval:      50 * time.Millisecond,
+		BufferSize:          20,
+		AdaptationFactor:    0.2,
+		SmoothTransitions:   false,
+		CPUUsageMode:        CPUUsageModeHeuristic,
+		HysteresisBuffer:    5.0,
+		MaxRateChangeFactor: 0.5,
+	}
+
+	mockMonitor := &mockResourceMonitor{
+		stats: ResourceStats{
+			MemoryUsedPercent: 30.0,
+			CPUUsagePercent:   20.0,
+			GoroutineCount:    5,
+			Timestamp:         time.Now(),
+		},
+	}
+
+	at := newAdaptiveThrottlerWithMonitor(config, mockMonitor)
+	defer at.Close()
+
+	// Send some elements
+	at.In() <- "first"
+	at.In() <- "second"
+
+	// Close input channel
+	close(at.in)
+
+	// Verify output channel is eventually closed
+	timeout := time.After(500 * time.Millisecond)
+	var received []any
+	for {
+		select {
+		case element, ok := <-at.Out():
+			if !ok {
+				// Channel closed - verify we got the elements
+				if len(received) < 2 {
+					t.Errorf("expected at least 2 elements before close, got %d", len(received))
+				}
+				return
+			}
+			received = append(received, element)
+		case <-timeout:
+			t.Fatal("timeout waiting for output channel to close after input close")
+		}
+	}
+}
+
+func TestAdaptiveThrottler_EmitShutdown(t *testing.T) {
+	config := AdaptiveThrottlerConfig{
+		MaxMemoryPercent:    80.0,
+		MaxCPUPercent:       70.0,
+		MinThroughput:       1,
+		MaxThroughput:       1, // Very low throughput to trigger quota
+		SampleInterval:      50 * time.Millisecond,
+		BufferSize:          5,
+		AdaptationFactor:    0.2,
+		SmoothTransitions:   false,
+		CPUUsageMode:        CPUUsageModeHeuristic,
+		HysteresisBuffer:    5.0,
+		MaxRateChangeFactor: 0.5,
+	}
+
+	mockMonitor := &mockResourceMonitor{
+		stats: ResourceStats{
+			MemoryUsedPercent: 30.0,
+			CPUUsagePercent:   20.0,
+			GoroutineCount:    5,
+			Timestamp:         time.Now(),
+		},
+	}
+
+	at := newAdaptiveThrottlerWithMonitor(config, mockMonitor)
+
+	// Exhaust quota
+	at.In() <- "first"
+	<-at.Out() // Consume first element
+
+	// Now quota is exhausted, send another element that will block
+	sent := make(chan struct{})
+	go func() {
+		at.In() <- "blocked"
+		close(sent)
+	}()
+
+	// Give it time to block
+	time.Sleep(50 * time.Millisecond)
+
+	// Close the throttler while emit is blocked
+	at.Close()
+
+	// Wait for shutdown to complete
+	select {
+	case <-sent:
+		// Element was sent (may have been flushed or dropped)
+	case <-time.After(500 * time.Millisecond):
+		t.Error("timeout waiting for emit to handle shutdown")
+	}
+
+	// Verify output channel is closed
+	select {
+	case _, ok := <-at.Out():
+		if ok {
+			t.Error("output channel should be closed after shutdown")
+		}
+	default:
+		// Channel already closed
+	}
+}
+
+// mockFlow implements streams.Flow for testing
+type mockFlow struct {
+	in  chan any
+	out chan any
+}
+
+func (m *mockFlow) Via(flow streams.Flow) streams.Flow {
+	go func() {
+		defer close(flow.In())
+		for element := range m.out {
+			flow.In() <- element
+		}
+	}()
+	return flow
+}
+
+func (m *mockFlow) To(sink streams.Sink) {
+	defer close(sink.In())
+	for element := range m.out {
+		sink.In() <- element
+	}
+	sink.AwaitCompletion()
+}
+
+func (m *mockFlow) In() chan<- any {
+	return m.in
+}
+
+func (m *mockFlow) Out() <-chan any {
+	return m.out
+}
+
+// mockSink implements streams.Sink for testing
+type mockSink struct {
+	in chan any
+}
+
+func (m *mockSink) In() chan<- any {
+	return m.in
+}
+
+func (m *mockSink) AwaitCompletion() {
+	// Wait for input channel to be closed
+	for range m.in {
+		_ = struct{}{} // drain channel
 	}
 }

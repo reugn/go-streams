@@ -1,12 +1,18 @@
 package sysmonitor
 
 import (
+	"runtime"
+	"strings"
 	"testing"
 )
 
 func TestGetSystemMemory(t *testing.T) {
 	mem, err := GetSystemMemory()
 	if err != nil {
+		// Skip test on unsupported platforms
+		if strings.Contains(err.Error(), "not supported on this platform") {
+			t.Skipf("GetSystemMemory not supported on %s: %v", runtime.GOOS, err)
+		}
 		t.Fatalf("GetSystemMemory failed: %v", err)
 	}
 
@@ -22,6 +28,10 @@ func TestGetSystemMemory(t *testing.T) {
 func TestMemorySampler(t *testing.T) {
 	mem, err := GetSystemMemory()
 	if err != nil {
+		// Skip test on unsupported platforms
+		if strings.Contains(err.Error(), "not supported on this platform") {
+			t.Skipf("GetSystemMemory not supported on %s: %v", runtime.GOOS, err)
+		}
 		t.Fatalf("GetSystemMemory failed: %v", err)
 	}
 

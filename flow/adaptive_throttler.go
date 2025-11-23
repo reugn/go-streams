@@ -20,32 +20,24 @@ const (
 
 // AdaptiveThrottlerConfig configures the adaptive throttler behavior
 type AdaptiveThrottlerConfig struct {
-	// Resource thresholds (0-100 percentage)
+	// Resource monitoring configuration
+	//
+	// These settings control how the throttler monitors system resources
+	// and determines when to throttle throughput.
+
+	// MaxMemoryPercent is the maximum memory usage threshold (0-100 percentage).
+	// When memory usage exceeds this threshold, throughput will be reduced.
 	MaxMemoryPercent float64
-	MaxCPUPercent    float64
 
-	// Throughput bounds (elements per second)
-	MinThroughput int
-	MaxThroughput int
+	// MaxCPUPercent is the maximum CPU usage threshold (0-100 percentage).
+	// When CPU usage exceeds this threshold, throughput will be reduced.
+	MaxCPUPercent float64
 
-	// How often to sample resources
+	// SampleInterval is how often to sample system resources.
+	// More frequent sampling provides faster response but increases CPU overhead.
 	SampleInterval time.Duration
 
-	// Buffer size to hold incoming elements
-	BufferSize    int
-	MaxBufferSize int
-
-	// Adaptation parameters (How aggressively to adapt. 0.1 = slow, 0.5 = fast).
-	//
-	// Allowed values: 0.0 to 1.0
-	AdaptationFactor float64
-
-	// Rate transition smoothing.
-	//
-	// If true, the throughput rate will be smoothed over time to avoid abrupt changes.
-	SmoothTransitions bool
-
-	// CPU usage sampling mode.
+	// CPUUsageMode controls how CPU usage is measured.
 	//
 	// CPUUsageModeHeuristic: Estimates CPU usage using a simple heuristic (goroutine count),
 	// suitable for platforms where accurate process CPU measurement is not supported.
@@ -54,16 +46,6 @@ type AdaptiveThrottlerConfig struct {
 	// (when supported), providing more accurate CPU usage readings.
 	CPUUsageMode CPUUsageMode
 
-	// Hysteresis buffer to prevent rapid state changes (percentage points).
-	// Requires this much additional headroom before increasing rate.
-	// Default: 5.0
-	HysteresisBuffer float64
-
-	// Maximum rate change factor per adaptation cycle (0.0-1.0).
-	// Limits how much the rate can change in a single step to prevent instability.
-	// Default: 0.3 (max 30% change per cycle)
-	MaxRateChangeFactor float64
-
 	// MemoryReader is a user-provided custom function that returns memory usage percentage.
 	// This can be particularly useful for containerized deployments or other environments
 	// where standard system memory readings may not accurately reflect container-specific
@@ -71,23 +53,94 @@ type AdaptiveThrottlerConfig struct {
 	// If nil, system memory will be read via mem.VirtualMemory().
 	// Must return memory used percentage (0-100).
 	MemoryReader func() (float64, error)
+
+	// Throughput bounds (in elements per second)
+	//
+	// These settings define the minimum and maximum throughput rates.
+
+	// MinThroughput is the minimum throughput in elements per second.
+	// The throttler will never reduce throughput below this value.
+	MinThroughput int
+
+	// MaxThroughput is the maximum throughput in elements per second.
+	// The throttler will never increase throughput above this value.
+	MaxThroughput int
+
+	// Buffer configuration
+	//
+	// These settings control the internal buffering of elements.
+
+	// BufferSize is the initial buffer size in number of elements.
+	// This buffer holds incoming elements when throughput is throttled.
+	BufferSize int
+
+	// MaxBufferSize is the maximum buffer size in number of elements.
+	// This prevents unbounded memory allocation during sustained throttling.
+	MaxBufferSize int
+
+	// Adaptation behavior
+	//
+	// These settings control how aggressively and smoothly the throttler
+	// adapts to changing resource conditions.
+
+	// AdaptationFactor controls how aggressively the throttler adapts (0.0-1.0).
+	// Lower values (e.g., 0.1) result in slower, more conservative adaptation.
+	// Higher values (e.g., 0.5) result in faster, more aggressive adaptation.
+	AdaptationFactor float64
+
+	// SmoothTransitions enables rate transition smoothing.
+	// If true, the throughput rate will be smoothed over time to avoid abrupt changes.
+	// This helps prevent oscillations and provides more stable behavior.
+	SmoothTransitions bool
+
+	// HysteresisBuffer prevents rapid state changes (in percentage points).
+	// Requires this much additional headroom before increasing rate.
+	// This prevents oscillations around resource thresholds.
+	HysteresisBuffer float64
+
+	// MaxRateChangeFactor limits the maximum rate change per adaptation cycle (0.0-1.0).
+	// Limits how much the rate can change in a single step to prevent instability.
+	MaxRateChangeFactor float64
 }
 
-// DefaultAdaptiveThrottlerConfig returns sensible defaults for most use cases
+// DefaultAdaptiveThrottlerConfig returns sensible defaults for most use cases.
+//
+// Default configuration parameters:
+//
+// Resource Monitoring:
+//   - MaxMemoryPercent: 80.0% - Conservative memory threshold to prevent OOM
+//   - MaxCPUPercent: 70.0% - Conservative CPU threshold to maintain responsiveness
+//   - SampleInterval: 200ms - Balanced sampling frequency to minimize overhead
+//   - CPUUsageMode: CPUUsageModeMeasured - Uses native process CPU measurement
+//   - MemoryReader: nil - Uses system memory via mem.VirtualMemory()
+//
+// Throughput Bounds:
+//   - MinThroughput: 10 elements/second - Ensures minimum processing rate
+//   - MaxThroughput: 500 elements/second - Conservative maximum for stability
+//
+// Buffer Configuration:
+//   - BufferSize: 500 elements - Matches max throughput for 1 second buffer at max rate
+//   - MaxBufferSize: 10,000 elements - Prevents unbounded memory allocation
+//
+// Adaptation Behavior:
+//   - AdaptationFactor: 0.15 - Conservative adaptation speed (15% adjustment per cycle)
+//   - SmoothTransitions: true - Enables rate smoothing to avoid abrupt changes
+//   - HysteresisBuffer: 5.0% - Prevents oscillations around resource thresholds
+//   - MaxRateChangeFactor: 0.3 - Limits rate changes to 30% per cycle for stability
 func DefaultAdaptiveThrottlerConfig() *AdaptiveThrottlerConfig {
 	return &AdaptiveThrottlerConfig{
-		MaxMemoryPercent:    80.0,                   // Conservative memory threshold
-		MaxCPUPercent:       70.0,                   // Conservative CPU threshold
-		MinThroughput:       10,                     // Reasonable minimum throughput
-		MaxThroughput:       500,                    // More conservative maximum
-		SampleInterval:      200 * time.Millisecond, // Less frequent sampling
-		BufferSize:          500,                    // Match max throughput for 1 second buffer at max rate
-		MaxBufferSize:       10000,                  // Reasonable maximum to prevent unbounded memory allocation
-		AdaptationFactor:    0.15,                   // Slightly more conservative adaptation
-		SmoothTransitions:   true,                   // Keep smooth transitions enabled by default
-		CPUUsageMode:        CPUUsageModeMeasured,   // Use actual process CPU usage natively
-		HysteresisBuffer:    5.0,                    // Prevent oscillations around threshold
-		MaxRateChangeFactor: 0.3,                    // More conservative rate changes
+		MaxMemoryPercent:    80.0,
+		MaxCPUPercent:       70.0,
+		MinThroughput:       10,
+		MaxThroughput:       500,
+		SampleInterval:      200 * time.Millisecond,
+		BufferSize:          500,
+		MaxBufferSize:       10000,
+		AdaptationFactor:    0.15,
+		SmoothTransitions:   true,
+		CPUUsageMode:        CPUUsageModeMeasured,
+		HysteresisBuffer:    5.0,
+		MaxRateChangeFactor: 0.3,
 	}
 }
 
@@ -115,24 +168,24 @@ type AdaptiveThrottler struct {
 	config  AdaptiveThrottlerConfig
 	monitor resourceMonitor
 
-	// Current rate (elements per second)
+	// Current throughput rate in elements per second
 	currentRate atomic.Int64
 
-	// Rate control
-	period      time.Duration // Calculated from currentRate
-	maxElements atomic.Int64  // Elements per period
-	counter     atomic.Int64
+	// Rate control: period-based quota enforcement
+	period      time.Duration // Time period for quota calculation (typically 1 second)
+	maxElements atomic.Int64  // Maximum elements allowed per period
+	counter     atomic.Int64  // Current element count in the period
 
-	// Channels
-	in          chan any
-	out         chan any
-	quotaSignal chan struct{}
-	done        chan struct{}
+	// Communication channels
+	in          chan any      // Input channel for incoming elements
+	out         chan any      // Output channel for throttled elements
+	quotaSignal chan struct{} // Signal channel to notify when quota resets
+	done        chan struct{} // Shutdown signal channel
 
-	// Rate adaptation
-	lastAdaptation time.Time
+	// Rate adaptation tracking
+	lastAdaptation time.Time // Timestamp of last rate adaptation
 
-	stopOnce sync.Once
+	stopOnce sync.Once // Ensures cleanup happens only once
 }
 
 var _ streams.Flow = (*AdaptiveThrottler)(nil)

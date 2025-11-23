@@ -31,25 +31,23 @@ type ResourceStats struct {
 
 // ResourceMonitor monitors system resources and provides current statistics
 type ResourceMonitor struct {
-	sampleInterval  time.Duration
-	memoryThreshold float64
-	cpuThreshold    float64
-	cpuMode         CPUUsageMode
+	// Configuration thresholds
+	sampleInterval  time.Duration // How often to sample system resources
+	memoryThreshold float64       // Memory usage threshold (0-100 percentage)
+	cpuThreshold    float64       // CPU usage threshold (0-100 percentage)
+	cpuMode         CPUUsageMode  // CPU usage measurement mode
 
-	// Current stats (atomic for thread-safe reads)
+	// Current resource statistics
 	stats atomic.Pointer[ResourceStats]
 
-	// CPU sampling
-	sampler sysmonitor.ProcessCPUSampler
+	// Resource sampling components
+	sampler      sysmonitor.ProcessCPUSampler // CPU usage sampler
+	memStats     runtime.MemStats             // Reusable buffer for memory statistics
+	memoryReader func() (float64, error)      // Custom memory reader for containerized deployments
 
-	// Reusable buffer for memory stats
-	memStats runtime.MemStats
-
-	// Memory reader for containerized deployments
-	memoryReader func() (float64, error)
-
-	mu   sync.RWMutex
-	done chan struct{}
+	// Synchronization and lifecycle
+	closeOnce sync.Once     // Ensures cleanup happens only once
+	done      chan struct{} // Shutdown signal channel
 }
 
 // NewResourceMonitor creates a new resource monitor.
@@ -255,15 +253,9 @@ func (rm *ResourceMonitor) monitor() {
 
 // Close stops the resource monitor
 func (rm *ResourceMonitor) Close() {
-	rm.mu.Lock()
-	defer rm.mu.Unlock()
-
-	select {
-	case <-rm.done:
-		return
-	default:
+	rm.closeOnce.Do(func() {
 		close(rm.done)
-	}
+	})
 }
 
 // clampPercent clamps a percentage value between 0 and 100.

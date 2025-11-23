@@ -33,7 +33,6 @@ type AdaptiveThrottlerConfig struct {
 
 	// Buffer size to hold incoming elements
 	BufferSize    int
-	// Maximum allowed buffer size to prevent unbounded memory allocation
 	MaxBufferSize int
 
 	// Adaptation parameters (How aggressively to adapt. 0.1 = slow, 0.5 = fast).
@@ -138,6 +137,43 @@ type AdaptiveThrottler struct {
 
 var _ streams.Flow = (*AdaptiveThrottler)(nil)
 
+// validateConfig validates the adaptive throttler configuration
+func validateConfig(config *AdaptiveThrottlerConfig) error {
+	if config.MaxMemoryPercent <= 0 || config.MaxMemoryPercent > 100 {
+		return fmt.Errorf("invalid MaxMemoryPercent: %f", config.MaxMemoryPercent)
+	}
+	if config.MinThroughput < 1 || config.MaxThroughput < config.MinThroughput {
+		return fmt.Errorf("invalid throughput bounds: min=%d, max=%d", config.MinThroughput, config.MaxThroughput)
+	}
+	if config.AdaptationFactor <= 0 || config.AdaptationFactor >= 1 {
+		return fmt.Errorf("invalid AdaptationFactor: %f, must be in (0, 1)", config.AdaptationFactor)
+	}
+	if config.MaxCPUPercent <= 0 || config.MaxCPUPercent > 100 {
+		return fmt.Errorf("invalid MaxCPUPercent: %f", config.MaxCPUPercent)
+	}
+	if config.BufferSize < 1 {
+		return fmt.Errorf("invalid BufferSize: %d", config.BufferSize)
+	}
+	if config.MaxBufferSize < 1 {
+		return fmt.Errorf("invalid MaxBufferSize: %d", config.MaxBufferSize)
+	}
+	if config.BufferSize > config.MaxBufferSize {
+		return fmt.Errorf("BufferSize %d exceeds MaxBufferSize %d", config.BufferSize, config.MaxBufferSize)
+	}
+	if config.SampleInterval < minSampleInterval {
+		return fmt.Errorf(
+			"invalid SampleInterval: %v; must be at least %v to prevent high CPU overhead",
+			config.SampleInterval, minSampleInterval)
+	}
+	if config.HysteresisBuffer < 0 {
+		return fmt.Errorf("invalid HysteresisBuffer: %f", config.HysteresisBuffer)
+	}
+	if config.MaxRateChangeFactor <= 0 || config.MaxRateChangeFactor > 1 {
+		return fmt.Errorf("invalid MaxRateChangeFactor: %f, must be in (0, 1]", config.MaxRateChangeFactor)
+	}
+	return nil
+}
+
 // NewAdaptiveThrottler creates a new adaptive throttler
 // If config is nil, default configuration will be used.
 func NewAdaptiveThrottler(config *AdaptiveThrottlerConfig) (*AdaptiveThrottler, error) {
@@ -146,37 +182,8 @@ func NewAdaptiveThrottler(config *AdaptiveThrottlerConfig) (*AdaptiveThrottler, 
 	}
 
 	// Validate configuration
-	if config.MaxMemoryPercent <= 0 || config.MaxMemoryPercent > 100 {
-		return nil, fmt.Errorf("invalid MaxMemoryPercent: %f", config.MaxMemoryPercent)
-	}
-	if config.MinThroughput < 1 || config.MaxThroughput < config.MinThroughput {
-		return nil, fmt.Errorf("invalid throughput bounds: min=%d, max=%d", config.MinThroughput, config.MaxThroughput)
-	}
-	if config.AdaptationFactor <= 0 || config.AdaptationFactor >= 1 {
-		return nil, fmt.Errorf("invalid AdaptationFactor: %f, must be in (0, 1)", config.AdaptationFactor)
-	}
-	if config.MaxCPUPercent <= 0 || config.MaxCPUPercent > 100 {
-		return nil, fmt.Errorf("invalid MaxCPUPercent: %f", config.MaxCPUPercent)
-	}
-	if config.BufferSize < 1 {
-		return nil, fmt.Errorf("invalid BufferSize: %d", config.BufferSize)
-	}
-	if config.MaxBufferSize < 1 {
-		return nil, fmt.Errorf("invalid MaxBufferSize: %d", config.MaxBufferSize)
-	}
-	if config.BufferSize > config.MaxBufferSize {
-		return nil, fmt.Errorf("BufferSize %d exceeds MaxBufferSize %d", config.BufferSize, config.MaxBufferSize)
-	}
-	if config.SampleInterval < minSampleInterval {
-		return nil, fmt.Errorf(
-			"invalid SampleInterval: %v; must be at least %v to prevent high CPU overhead",
-			config.SampleInterval, minSampleInterval)
-	}
-	if config.HysteresisBuffer < 0 {
-		return nil, fmt.Errorf("invalid HysteresisBuffer: %f", config.HysteresisBuffer)
-	}
-	if config.MaxRateChangeFactor <= 0 || config.MaxRateChangeFactor > 1 {
-		return nil, fmt.Errorf("invalid MaxRateChangeFactor: %f, must be in (0, 1]", config.MaxRateChangeFactor)
+	if err := validateConfig(config); err != nil {
+		return nil, err
 	}
 
 	// Initialize with max throughput

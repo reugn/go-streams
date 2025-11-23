@@ -215,21 +215,53 @@ func readSystemMemory() (SystemMemory, error) {
 
 // parseMemInfo parses the /proc/meminfo file format
 func parseMemInfo(r io.Reader) (SystemMemory, error) {
-	scanner := bufio.NewScanner(r)
+	memFields, err := parseMemInfoFields(r)
+	if err != nil {
+		return SystemMemory{}, err
+	}
 
-	var total, available, free, cached uint64
-	memAvailableFound := false
+	if memFields.total == 0 {
+		return SystemMemory{}, fmt.Errorf("could not find MemTotal in /proc/meminfo")
+	}
+
+	available, err := calculateAvailableMemory(memFields)
+	if err != nil {
+		return SystemMemory{}, err
+	}
+
+	// Ensure available doesn't exceed total
+	if available > memFields.total {
+		available = memFields.total
+	}
+
+	return SystemMemory{
+		Total:     memFields.total,
+		Available: available,
+	}, nil
+}
+
+type memInfoFields struct {
+	total             uint64
+	available         uint64
+	free              uint64
+	cached            uint64
+	memAvailableFound bool
+}
+
+func parseMemInfoFields(r io.Reader) (memInfoFields, error) {
+	scanner := bufio.NewScanner(r)
+	var fields memInfoFields
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		fields := strings.Fields(line)
+		lineFields := strings.Fields(line)
 
-		if len(fields) < 2 {
+		if len(lineFields) < 2 {
 			continue
 		}
 
-		key := strings.TrimSuffix(fields[0], ":")
-		value, err := strconv.ParseUint(fields[1], 10, 64)
+		key := strings.TrimSuffix(lineFields[0], ":")
+		value, err := strconv.ParseUint(lineFields[1], 10, 64)
 		if err != nil {
 			continue
 		}
@@ -238,52 +270,48 @@ func parseMemInfo(r io.Reader) (SystemMemory, error) {
 		// Check for overflow
 		const maxValueBeforeOverflow = (1<<64 - 1) / 1024
 		if value > maxValueBeforeOverflow {
-			return SystemMemory{}, fmt.Errorf("memory value too large: %d kB would overflow when converting to bytes", value)
+			return memInfoFields{}, fmt.Errorf(
+				"memory value too large: %d kB would overflow when converting to bytes", value)
 		}
 		value *= 1024
 
 		switch key {
 		case "MemTotal":
-			total = value
+			fields.total = value
 		case "MemAvailable":
-			available = value
-			memAvailableFound = true
+			fields.available = value
+			fields.memAvailableFound = true
 		case "MemFree":
-			free = value
+			fields.free = value
 		case "Cached":
-			cached = value
+			fields.cached = value
 		}
 
 		// Early exit if we have MemTotal and MemAvailable (kernel 3.14+)
-		if total > 0 && memAvailableFound {
+		if fields.total > 0 && fields.memAvailableFound {
 			break
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return SystemMemory{}, fmt.Errorf("error reading meminfo: %w", err)
+		return memInfoFields{}, fmt.Errorf("error reading meminfo: %w", err)
 	}
 
-	if total == 0 {
-		return SystemMemory{}, fmt.Errorf("could not find MemTotal in /proc/meminfo")
+	return fields, nil
+}
+
+func calculateAvailableMemory(fields memInfoFields) (uint64, error) {
+	if fields.memAvailableFound {
+		return fields.available, nil
 	}
 
 	// Fallback calculation for MemAvailable
-	if !memAvailableFound {
-		available = free + cached
-		if available == 0 {
-			return SystemMemory{}, fmt.Errorf(
-				"could not find MemAvailable in /proc/meminfo and fallback calculation failed (MemFree and Cached not found or both zero)")
-		}
+	available := fields.free + fields.cached
+	if available == 0 {
+		return 0, fmt.Errorf(
+			"could not find MemAvailable in /proc/meminfo and fallback calculation failed " +
+				"(MemFree and Cached not found or both zero)")
 	}
 
-	// Ensure available doesn't exceed total
-	if available > total {
-		available = total
-	}
-
-	return SystemMemory{
-		Total:     total,
-		Available: available,
-	}, nil
+	return available, nil
 }

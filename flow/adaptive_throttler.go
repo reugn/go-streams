@@ -137,8 +137,8 @@ type AdaptiveThrottler struct {
 
 var _ streams.Flow = (*AdaptiveThrottler)(nil)
 
-// validateConfig validates the adaptive throttler configuration
-func validateConfig(config *AdaptiveThrottlerConfig) error {
+// validate validates the adaptive throttler configuration
+func (config *AdaptiveThrottlerConfig) validate() error {
 	if config.MaxMemoryPercent <= 0 || config.MaxMemoryPercent > 100 {
 		return fmt.Errorf("invalid MaxMemoryPercent: %f", config.MaxMemoryPercent)
 	}
@@ -181,8 +181,7 @@ func NewAdaptiveThrottler(config *AdaptiveThrottlerConfig) (*AdaptiveThrottler, 
 		config = DefaultAdaptiveThrottlerConfig()
 	}
 
-	// Validate configuration
-	if err := validateConfig(config); err != nil {
+	if err := config.validate(); err != nil {
 		return nil, err
 	}
 

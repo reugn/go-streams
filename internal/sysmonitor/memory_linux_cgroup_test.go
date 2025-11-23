@@ -259,17 +259,60 @@ func TestReadCgroupStatWithFS(t *testing.T) {
 	}
 }
 
+// cgroupMemoryTestCase represents a test case for readCgroupMemoryWithFS
+type cgroupMemoryTestCase struct {
+	name          string
+	usage         string
+	limit         string
+	stat          string
+	wantTotal     uint64
+	wantAvailable uint64
+	wantErr       bool
+	errContains   string
+}
+
+// testCgroupMemoryCase is a helper function to test readCgroupMemoryWithFS with different file paths and configs
+func testCgroupMemoryCase(
+	t *testing.T,
+	tt cgroupMemoryTestCase,
+	usagePath, limitPath, statPath string,
+	config cgroupMemoryConfig,
+) {
+	t.Helper()
+	t.Run(tt.name, func(t *testing.T) {
+		fs := newMockFileSystem()
+		if tt.usage != "" {
+			fs.files[usagePath] = []byte(tt.usage)
+		}
+		if tt.limit != "" {
+			fs.files[limitPath] = []byte(tt.limit)
+		}
+		if tt.stat != "" {
+			fs.files[statPath] = []byte(tt.stat)
+		}
+
+		got, err := readCgroupMemoryWithFS(fs, config)
+		if (err != nil) != tt.wantErr {
+			t.Errorf("readCgroupMemoryWithFS() error = %v, wantErr %v", err, tt.wantErr)
+			return
+		}
+		if tt.wantErr {
+			if err != nil && tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
+				t.Errorf("readCgroupMemoryWithFS() error = %v, want error containing %q", err, tt.errContains)
+			}
+		} else {
+			if got.Total != tt.wantTotal {
+				t.Errorf("readCgroupMemoryWithFS() Total = %v, want %v", got.Total, tt.wantTotal)
+			}
+			if got.Available != tt.wantAvailable {
+				t.Errorf("readCgroupMemoryWithFS() Available = %v, want %v", got.Available, tt.wantAvailable)
+			}
+		}
+	})
+}
+
 func TestReadCgroupMemoryWithFS_V2(t *testing.T) {
-	tests := []struct {
-		name          string
-		usage         string
-		limit         string
-		stat          string
-		wantTotal     uint64
-		wantAvailable uint64
-		wantErr       bool
-		errContains   string
-	}{
+	tests := []cgroupMemoryTestCase{
 		{
 			name:          "normal case",
 			usage:         "1073741824",                // 1GB
@@ -348,50 +391,16 @@ func TestReadCgroupMemoryWithFS_V2(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fs := newMockFileSystem()
-			if tt.usage != "" {
-				fs.files["/sys/fs/cgroup/memory.current"] = []byte(tt.usage)
-			}
-			if tt.limit != "" {
-				fs.files["/sys/fs/cgroup/memory.max"] = []byte(tt.limit)
-			}
-			if tt.stat != "" {
-				fs.files["/sys/fs/cgroup/memory.stat"] = []byte(tt.stat)
-			}
-
-			got, err := readCgroupMemoryWithFS(fs, cgroupV2Config)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("readCgroupMemoryWithFS() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if tt.wantErr {
-				if err != nil && tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
-					t.Errorf("readCgroupMemoryWithFS() error = %v, want error containing %q", err, tt.errContains)
-				}
-			} else {
-				if got.Total != tt.wantTotal {
-					t.Errorf("readCgroupMemoryWithFS() Total = %v, want %v", got.Total, tt.wantTotal)
-				}
-				if got.Available != tt.wantAvailable {
-					t.Errorf("readCgroupMemoryWithFS() Available = %v, want %v", got.Available, tt.wantAvailable)
-				}
-			}
-		})
+		testCgroupMemoryCase(t, tt,
+			"/sys/fs/cgroup/memory.current",
+			"/sys/fs/cgroup/memory.max",
+			"/sys/fs/cgroup/memory.stat",
+			cgroupV2Config)
 	}
 }
 
 func TestReadCgroupMemoryWithFS_V1(t *testing.T) {
-	tests := []struct {
-		name          string
-		usage         string
-		limit         string
-		stat          string
-		wantTotal     uint64
-		wantAvailable uint64
-		wantErr       bool
-		errContains   string
-	}{
+	tests := []cgroupMemoryTestCase{
 		{
 			name:          "normal case",
 			usage:         "1073741824",                      // 1GB
@@ -432,36 +441,11 @@ func TestReadCgroupMemoryWithFS_V1(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fs := newMockFileSystem()
-			if tt.usage != "" {
-				fs.files["/sys/fs/cgroup/memory/memory.usage_in_bytes"] = []byte(tt.usage)
-			}
-			if tt.limit != "" {
-				fs.files["/sys/fs/cgroup/memory/memory.limit_in_bytes"] = []byte(tt.limit)
-			}
-			if tt.stat != "" {
-				fs.files["/sys/fs/cgroup/memory/memory.stat"] = []byte(tt.stat)
-			}
-
-			got, err := readCgroupMemoryWithFS(fs, cgroupV1Config)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("readCgroupMemoryWithFS() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if tt.wantErr {
-				if err != nil && tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
-					t.Errorf("readCgroupMemoryWithFS() error = %v, want error containing %q", err, tt.errContains)
-				}
-			} else {
-				if got.Total != tt.wantTotal {
-					t.Errorf("readCgroupMemoryWithFS() Total = %v, want %v", got.Total, tt.wantTotal)
-				}
-				if got.Available != tt.wantAvailable {
-					t.Errorf("readCgroupMemoryWithFS() Available = %v, want %v", got.Available, tt.wantAvailable)
-				}
-			}
-		})
+		testCgroupMemoryCase(t, tt,
+			"/sys/fs/cgroup/memory/memory.usage_in_bytes",
+			"/sys/fs/cgroup/memory/memory.limit_in_bytes",
+			"/sys/fs/cgroup/memory/memory.stat",
+			cgroupV1Config)
 	}
 }
 

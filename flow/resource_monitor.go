@@ -2,6 +2,7 @@ package flow
 
 import (
 	"fmt"
+	"log/slog"
 	"math"
 	"runtime"
 	"sync"
@@ -11,269 +12,364 @@ import (
 	"github.com/reugn/go-streams/internal/sysmonitor"
 )
 
-// CPUUsageMode defines the strategy for sampling CPU usage
+// CPUUsageMode defines strategies for CPU usage monitoring.
 type CPUUsageMode int
 
 const (
-	// CPUUsageModeHeuristic uses goroutine count as a simple CPU usage proxy
+	// CPUUsageModeHeuristic uses goroutine count as a lightweight CPU usage proxy.
 	CPUUsageModeHeuristic CPUUsageMode = iota
-	// CPUUsageModeMeasured attempts to measure actual process CPU usage via gopsutil
+	// CPUUsageModeMeasured provides accurate CPU usage measurement via system calls.
 	CPUUsageModeMeasured
 )
 
-// ResourceStats represents current system resource statistics
+// ResourceStats holds current system resource utilization metrics.
 type ResourceStats struct {
-	MemoryUsedPercent float64
-	CPUUsagePercent   float64
-	GoroutineCount    int
-	Timestamp         time.Time
+	MemoryUsedPercent float64   // Memory usage as a percentage (0-100).
+	CPUUsagePercent   float64   // CPU usage as a percentage (0-100).
+	GoroutineCount    int       // Number of active goroutines.
+	Timestamp         time.Time // Time when these stats were collected.
 }
 
-// ResourceMonitor monitors system resources and provides current statistics
+// resourceMonitor defines the interface for resource monitoring.
+type resourceMonitor interface {
+	GetStats() ResourceStats
+	Close()
+}
+
+// ResourceMonitor collects and provides system resource usage statistics.
 type ResourceMonitor struct {
-	// Configuration thresholds
-	sampleInterval  time.Duration // How often to sample system resources
-	memoryThreshold float64       // Memory usage threshold (0-100 percentage)
-	cpuThreshold    float64       // CPU usage threshold (0-100 percentage)
-	cpuMode         CPUUsageMode  // CPU usage measurement mode
+	sampleInterval time.Duration
+	mu             sync.Mutex              // Protects configuration changes.
+	cpuMode        CPUUsageMode            // Current CPU monitoring strategy.
+	memoryReader   func() (float64, error) // Custom memory usage reader.
 
-	// Current resource statistics
-	stats atomic.Pointer[ResourceStats]
-
-	// Resource sampling components
-	sampler      sysmonitor.ProcessCPUSampler // CPU usage sampler
-	memStats     runtime.MemStats             // Reusable buffer for memory statistics
-	memoryReader func() (float64, error)      // Custom memory reader for containerized deployments
-
-	// Synchronization and lifecycle
-	closeOnce sync.Once     // Ensures cleanup happens only once
-	done      chan struct{} // Shutdown signal channel
+	// Runtime state
+	stats            atomic.Pointer[ResourceStats] // Latest resource statistics.
+	sampler          sysmonitor.ProcessCPUSampler  // CPU usage sampler implementation.
+	updateIntervalCh chan time.Duration            // Channel for dynamic interval updates.
+	done             chan struct{}                 // Signals monitoring loop termination.
+	closeOnce        sync.Once                     // Ensures clean shutdown.
 }
 
-// NewResourceMonitor creates a new resource monitor.
-//
-// Panics if:
-//
-// - sampleInterval <= 0
-//
-// - memoryThreshold < 0 or memoryThreshold > 100
-//
-// - cpuThreshold < 0 or cpuThreshold > 100
-func NewResourceMonitor(
+// newResourceMonitor creates a new resource monitor instance.
+// This constructor is private and should only be called by the registry.
+func newResourceMonitor(
 	sampleInterval time.Duration,
-	memoryThreshold, cpuThreshold float64,
 	cpuMode CPUUsageMode,
 	memoryReader func() (float64, error),
 ) *ResourceMonitor {
-	if sampleInterval <= 0 {
-		// sampleInterval must be greater than 0
-		panic(fmt.Sprintf("invalid sampleInterval: %v", sampleInterval))
-	}
-	if memoryThreshold < 0 || memoryThreshold > 100 {
-		// memoryThreshold must be between 0 and 100
-		panic(fmt.Sprintf("invalid memoryThreshold: %f, must be between 0 and 100", memoryThreshold))
-	}
-	if cpuThreshold < 0 || cpuThreshold > 100 {
-		// cpuThreshold must be between 0 and 100
-		panic(fmt.Sprintf("invalid cpuThreshold: %f, must be between 0 and 100", cpuThreshold))
+	rm := &ResourceMonitor{
+		sampleInterval:   sampleInterval,
+		cpuMode:          cpuMode,
+		memoryReader:     memoryReader,
+		updateIntervalCh: make(chan time.Duration, 1),
+		done:             make(chan struct{}),
 	}
 
-	rm := &ResourceMonitor{
-		sampleInterval:  sampleInterval,
-		memoryThreshold: memoryThreshold,
-		cpuThreshold:    cpuThreshold,
-		cpuMode:         cpuMode,
-		memoryReader:    memoryReader,
-		done:            make(chan struct{}),
-	}
+	// Initialize with empty stats
+	rm.stats.Store(&ResourceStats{
+		Timestamp: time.Now(),
+	})
 
 	rm.initSampler()
 
-	// start periodically collecting resource statistics
 	go rm.monitor()
-
 	return rm
 }
 
-// initSampler initializes the appropriate CPU sampler based on mode and platform support
-func (rm *ResourceMonitor) initSampler() {
-	switch rm.cpuMode {
-	case CPUUsageModeMeasured:
-		// Try native sampler first, fallback to heuristic
-		if sampler, err := sysmonitor.NewProcessSampler(); err == nil {
-			rm.sampler = sampler
-		} else {
-			rm.sampler = sysmonitor.NewGoroutineHeuristicSampler()
-			rm.cpuMode = CPUUsageModeHeuristic
-		}
-	default: // CPUUsageModeHeuristic
-		rm.sampler = sysmonitor.NewGoroutineHeuristicSampler()
-	}
-
-	rm.stats.Store(rm.collectStats())
-}
-
-// GetStats returns the current resource statistics
+// GetStats returns the most recent resource usage statistics.
+// The returned data is thread-safe and represents a consistent snapshot.
 func (rm *ResourceMonitor) GetStats() ResourceStats {
-	stats := rm.stats.Load()
-	if stats == nil {
+	val := rm.stats.Load()
+	if val == nil {
 		return ResourceStats{}
 	}
-	return *stats
+	return *val
 }
 
-// IsResourceConstrained returns true if resources are above thresholds
-func (rm *ResourceMonitor) IsResourceConstrained() bool {
-	stats := rm.GetStats()
-	return stats.MemoryUsedPercent > rm.memoryThreshold ||
-		stats.CPUUsagePercent > rm.cpuThreshold
+// GetMode returns the current CPU monitoring strategy.
+func (rm *ResourceMonitor) GetMode() CPUUsageMode {
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+	return rm.cpuMode
 }
 
-// collectStats collects current system resource statistics
-func (rm *ResourceMonitor) collectStats() *ResourceStats {
-	sysStats, hasSystemStats := rm.tryGetSystemMemory()
+// SetMode changes the CPU monitoring strategy if possible.
+// Allows switching between heuristic and measured modes.
+func (rm *ResourceMonitor) SetMode(newMode CPUUsageMode) {
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
 
-	var procStats *runtime.MemStats
-	if !hasSystemStats {
-		// Reuse existing memStats buffer instead of allocating new one
-		runtime.ReadMemStats(&rm.memStats)
-		procStats = &rm.memStats
+	// No change needed
+	if newMode == rm.cpuMode {
+		return
 	}
 
-	// Calculate memory usage percentage
-	memoryPercent := rm.memoryUsagePercent(hasSystemStats, sysStats, procStats)
-
-	// Get goroutine count
-	goroutineCount := runtime.NumGoroutine()
-
-	// Sample CPU usage and validate
-	cpuPercent := rm.sampler.Sample(rm.sampleInterval)
-	cpuPercent = validatePercent(cpuPercent)
-
-	stats := &ResourceStats{
-		MemoryUsedPercent: memoryPercent,
-		CPUUsagePercent:   cpuPercent,
-		GoroutineCount:    goroutineCount,
-		Timestamp:         time.Now(),
-	}
-
-	// Validate the complete stats object
-	validateResourceStats(stats)
-
-	return stats
-}
-
-func (rm *ResourceMonitor) tryGetSystemMemory() (sysmonitor.SystemMemory, bool) {
-	stats, err := sysmonitor.GetSystemMemory()
-	if err != nil || stats.Total == 0 {
-		return sysmonitor.SystemMemory{}, false
-	}
-	return stats, true
-}
-
-func (rm *ResourceMonitor) memoryUsagePercent(
-	hasSystemStats bool,
-	sysStats sysmonitor.SystemMemory,
-	procStats *runtime.MemStats,
-) float64 {
-	// Use custom memory reader if provided (for containerized deployments)
-	if rm.memoryReader != nil {
-		if percent, err := rm.memoryReader(); err == nil {
-			return clampPercent(percent)
+	switch newMode {
+	case CPUUsageModeMeasured:
+		// Try to switch to measured mode
+		if sampler, err := sysmonitor.NewProcessSampler(); err == nil {
+			rm.sampler = sampler
+			rm.cpuMode = CPUUsageModeMeasured
+		} else {
+			slog.Error("failed to switch to measured mode", "error", err)
 		}
-		// Fall back to system memory if custom reader fails
-	}
-
-	if hasSystemStats {
-		available := sysStats.Available
-		if available > sysStats.Total {
-			available = sysStats.Total
-		}
-
-		// avoid division by zero
-		if sysStats.Total == 0 {
-			return 0
-		}
-
-		used := sysStats.Total - available
-		percent := float64(used) / float64(sysStats.Total) * 100
-
-		return clampPercent(percent)
-	}
-
-	if procStats == nil || procStats.Sys == 0 {
-		return 0
-	}
-
-	percent := float64(procStats.Alloc) / float64(procStats.Sys) * 100
-	return clampPercent(percent)
-}
-
-// validateResourceStats sanitizes ResourceStats to ensure valid values
-func validateResourceStats(stats *ResourceStats) {
-	if stats == nil {
-		panic("ResourceStats cannot be nil")
-	}
-
-	// Validate memory percent
-	stats.MemoryUsedPercent = validatePercent(stats.MemoryUsedPercent)
-
-	// Validate CPU percent
-	stats.CPUUsagePercent = validatePercent(stats.CPUUsagePercent)
-
-	// Validate goroutine count
-	if stats.GoroutineCount < 0 {
-		stats.GoroutineCount = 0
-	}
-
-	// Validate timestamp (should be recent)
-	if stats.Timestamp.IsZero() {
-		stats.Timestamp = time.Now()
-	} else if time.Since(stats.Timestamp) > time.Minute {
-		// Stats are too old, refresh timestamp
-		stats.Timestamp = time.Now()
+	case CPUUsageModeHeuristic:
+		rm.sampler = sysmonitor.NewGoroutineHeuristicSampler()
+		rm.cpuMode = CPUUsageModeHeuristic
 	}
 }
 
-// monitor periodically collects resource statistics
+// initSampler initializes the appropriate CPU usage sampler.
+// Uses measured mode by default if available
+func (rm *ResourceMonitor) initSampler() {
+	if sampler, err := sysmonitor.NewProcessSampler(); err == nil {
+		rm.sampler = sampler
+		rm.cpuMode = CPUUsageModeMeasured
+	} else {
+		// Fallback to heuristic
+		rm.sampler = sysmonitor.NewGoroutineHeuristicSampler()
+		rm.cpuMode = CPUUsageModeHeuristic
+	}
+}
+
+// monitor runs the continuous resource sampling loop.
+// Handles dynamic interval changes and graceful shutdown.
 func (rm *ResourceMonitor) monitor() {
 	ticker := time.NewTicker(rm.sampleInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-ticker.C:
-			newStats := rm.collectStats()
-			rm.stats.Store(newStats)
 		case <-rm.done:
 			return
+		case d := <-rm.updateIntervalCh:
+			rm.mu.Lock()
+			if d != rm.sampleInterval {
+				rm.sampleInterval = d
+				ticker.Stop()
+				ticker = time.NewTicker(rm.sampleInterval)
+				rm.sample()
+			}
+			rm.mu.Unlock()
+		case <-ticker.C:
+			rm.sample()
 		}
 	}
 }
 
-// Close stops the resource monitor
-func (rm *ResourceMonitor) Close() {
+// sample collects current CPU, memory, and goroutine statistics.
+// Updates the atomic stats pointer with the latest measurements.
+func (rm *ResourceMonitor) sample() {
+	stats := &ResourceStats{
+		Timestamp:      time.Now(),
+		GoroutineCount: runtime.NumGoroutine(),
+	}
+
+	// Memory Usage
+	// Check if a custom memory reader is provided
+	if rm.memoryReader != nil {
+		if mem, err := rm.memoryReader(); err == nil {
+			stats.MemoryUsedPercent = mem
+		}
+		// If not, use system memory stats
+	} else if memStats, err := sysmonitor.GetSystemMemory(); err == nil && memStats.Total > 0 {
+		used := memStats.Total - memStats.Available
+		stats.MemoryUsedPercent = float64(used) / float64(memStats.Total) * 100
+	} else {
+		// Fallback to runtime memory stats
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		if m.Sys > 0 {
+			stats.MemoryUsedPercent = float64(m.Alloc) / float64(m.Sys) * 100
+		}
+	}
+
+	// CPU Usage
+	cpu := rm.sampler.Sample(rm.sampleInterval)
+	stats.CPUUsagePercent = cpu
+
+	rm.stats.Store(stats)
+}
+
+// getSampleInterval thread-safe getter of the current sample interval.
+func (rm *ResourceMonitor) getSampleInterval() time.Duration {
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+	return rm.sampleInterval
+}
+
+// setInterval updates the sampling frequency dynamically.
+func (rm *ResourceMonitor) setInterval(d time.Duration) {
+	select {
+	case rm.updateIntervalCh <- d:
+	case <-rm.done:
+	}
+}
+
+// stop terminates the monitoring goroutine gracefully.
+func (rm *ResourceMonitor) stop() {
 	rm.closeOnce.Do(func() {
 		close(rm.done)
 	})
 }
 
-// clampPercent clamps a percentage value between 0 and 100.
-func clampPercent(percent float64) float64 {
-	if percent < 0 {
-		return 0
-	}
-	if percent > 100 {
-		return 100
-	}
-	return percent
+// globalMonitorRegistry manages the singleton ResourceMonitor instance.
+// Provides shared access with reference counting and automatic cleanup.
+var globalMonitorRegistry = &monitorRegistry{
+	intervalRefs: make(map[time.Duration]int),
 }
 
-// validatePercent validates and normalizes a percentage value.
-// It checks for NaN or Inf values and clamps the result between 0 and 100.
-func validatePercent(percent float64) float64 {
-	if math.IsNaN(percent) || math.IsInf(percent, 0) {
+// monitorIdleTimeout defines how long to wait before stopping an unused monitor.
+// Prevents unnecessary recreation of the monitor instance when new throttler is added.
+const monitorIdleTimeout = 5 * time.Second
+
+// monitorRegistry coordinates shared access to a ResourceMonitor instance.
+// Manages multiple consumers with different sampling requirements efficiently.
+type monitorRegistry struct {
+	mu           sync.Mutex            // Protects registry state.
+	instance     *ResourceMonitor      // The shared monitor instance.
+	intervalRefs map[time.Duration]int // Reference counts per sampling interval.
+	currentMin   time.Duration         // Current minimum sampling interval.
+	stopTimer    *time.Timer           // Timer for delayed cleanup.
+}
+
+// Acquire obtains a handle to the shared resource monitor.
+// Manages reference counting and may create or reconfigure the monitor as needed.
+func (r *monitorRegistry) Acquire(
+	requestedInterval time.Duration,
+	cpuMode CPUUsageMode,
+	memReader func() (float64, error),
+) resourceMonitor {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Validate the requested interval
+	if requestedInterval <= 0 {
+		panic(fmt.Sprintf("resource monitor: invalid interval %v, must be positive", requestedInterval))
+	}
+
+	// Cancel pending stop if we are resurrecting within the grace period
+	if r.stopTimer != nil {
+		r.stopTimer.Stop()
+		r.stopTimer = nil
+	}
+
+	// Register the requested interval
+	r.intervalRefs[requestedInterval]++
+
+	// Calculate global minimum
+	requiredMin := r.calculateMinInterval()
+
+	if r.instance == nil {
+		r.instance = newResourceMonitor(requiredMin, cpuMode, memReader)
+		r.currentMin = requiredMin
+	} else {
+		// Check if we need to upgrade the existing instance
+		if cpuMode > r.instance.GetMode() {
+			r.instance.SetMode(cpuMode)
+		}
+
+		// Adjust interval if this new user needs it faster
+		if requiredMin != r.currentMin {
+			r.instance.setInterval(requiredMin)
+			r.currentMin = requiredMin
+		}
+	}
+
+	return &sharedMonitorHandle{
+		monitor:  r.instance,
+		interval: requestedInterval,
+		registry: r,
+	}
+}
+
+// release decrements the reference count for a sampling interval.
+// Initiates cleanup when no consumers remain.
+func (r *monitorRegistry) release(interval time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.intervalRefs[interval]--
+	if r.intervalRefs[interval] <= 0 {
+		delete(r.intervalRefs, interval)
+	}
+
+	if len(r.intervalRefs) == 0 {
+		// Start grace period timer
+		if r.stopTimer == nil {
+			r.stopTimer = time.AfterFunc(monitorIdleTimeout, func() {
+				r.cleanup()
+			})
+		}
+		return
+	}
+
+	// If we still have users, check if we can slow down (release pressure)
+	newMin := r.calculateMinInterval()
+	if newMin != r.currentMin && r.instance != nil {
+		r.instance.setInterval(newMin)
+		r.currentMin = newMin
+	}
+}
+
+// cleanup stops and destroys the monitor instance.
+// Called after the idle timeout when no consumers remain.
+func (r *monitorRegistry) cleanup() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Double check we are still empty
+	if len(r.intervalRefs) == 0 && r.instance != nil {
+		r.instance.stop()
+		r.instance = nil
+	}
+	r.stopTimer = nil
+}
+
+// calculateMinInterval finds the fastest sampling rate required by any consumer.
+// Returns a default interval when no consumers are registered.
+func (r *monitorRegistry) calculateMinInterval() time.Duration {
+	if len(r.intervalRefs) == 0 {
+		return time.Second
+	}
+	minInterval := time.Duration(math.MaxInt64)
+	for d := range r.intervalRefs {
+		if d < minInterval {
+			minInterval = d
+		}
+	}
+	return minInterval
+}
+
+// getInstanceSampleInterval returns the current instance's sample interval in a thread-safe manner.
+// Returns 0 if no instance exists.
+func (r *monitorRegistry) getInstanceSampleInterval() time.Duration {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.instance == nil {
 		return 0
 	}
-	return clampPercent(percent)
+	return r.instance.getSampleInterval()
+}
+
+// sharedMonitorHandle provides consumers with access to the shared monitor.
+// Ensures proper reference counting and cleanup when no longer needed.
+type sharedMonitorHandle struct {
+	monitor  *ResourceMonitor // Reference to the shared monitor.
+	interval time.Duration    // Sampling interval requested by this consumer.
+	registry *monitorRegistry // Registry managing this handle.
+	once     sync.Once        // Ensures Close is called only once.
+}
+
+// GetStats returns resource statistics from the shared monitor.
+func (h *sharedMonitorHandle) GetStats() ResourceStats {
+	return h.monitor.GetStats()
+}
+
+// Close releases this consumer's reference to the shared monitor.
+func (h *sharedMonitorHandle) Close() {
+	h.once.Do(func() {
+		h.registry.release(h.interval)
+	})
 }

@@ -43,6 +43,7 @@ processing operations. These building blocks can be used to transform and manipu
 - **Flatten<sup>1</sup>:** Flattens a stream of slices of elements into a stream of elements.
 - **Batch:** Breaks a stream of elements into batches based on size or timing.
 - **Throttler:** Limits the rate at which elements are processed.
+- **AdaptiveThrottler:** Limits the rate at which elements are processed based on the current system resource utilization (CPU and memory usage).
 - **SlidingWindow:** Creates overlapping windows of elements.
 - **TumblingWindow:** Creates non-overlapping, fixed-size windows of elements.
 - **SessionWindow:** Creates windows based on periods of activity and inactivity.

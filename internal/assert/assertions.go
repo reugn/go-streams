@@ -1,6 +1,7 @@
 package assert
 
 import (
+	"math"
 	"reflect"
 	"strings"
 	"testing"
@@ -42,4 +43,12 @@ func Panics(t *testing.T, f func()) {
 		}
 	}()
 	f()
+}
+
+// InDelta checks whether two float64 values are within a given delta of each other.
+func InDelta(t *testing.T, expected, actual, delta float64) {
+	if math.Abs(expected-actual) > delta {
+		t.Helper()
+		t.Fatalf("Expected %v to be within %v of %v", actual, delta, expected)
+	}
 }

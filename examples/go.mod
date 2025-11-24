@@ -166,6 +166,7 @@ require (
 )
 
 replace (
+	github.com/reugn/go-streams => ..
 	github.com/reugn/go-streams/aerospike => ../aerospike
 	github.com/reugn/go-streams/aws => ../aws
 	github.com/reugn/go-streams/azure => ../azure
